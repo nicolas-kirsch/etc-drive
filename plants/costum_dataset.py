@@ -1,8 +1,9 @@
-import torch, os, pickle
+import torch, os, pickle, sys
 from torch.utils.data import Dataset
 
+
 from config import BASE_DIR
-from utils.assistive_functions import to_tensor
+from assistive_functions import to_tensor
 
 class CostumDataset(Dataset):
     '''
@@ -34,9 +35,10 @@ class CostumDataset(Dataset):
         '''
         Main function to get train and test datasets. No need to modify.
         '''
-        self._load_data()
-        train_data = self._data['train_data_full'][0:num_train_samples, :, :]
-        test_data = self._data['test_data'][0:num_test_samples, :, :]
+        train_data = self._generate_data(2048)
+        test_data = self._generate_data(2048)
+        train_data = train_data[0:num_train_samples, :, :]
+        test_data = test_data[0:num_test_samples, :, :]
         return train_data, test_data
 
     # ---- save and load functions. no need to modify ----
@@ -48,8 +50,8 @@ class CostumDataset(Dataset):
         test_data = self._generate_data(1024)
         # save
         filehandler = open(self.file_name, 'wb')
-        pickle.dump({'train_data_full': train_data_full.detach().cpu(),
-                     'test_data': test_data.detach().cpu()},
+        pickle.dump({'train_data_full': train_data_full.detach(),
+                     'test_data': test_data.detach()},
                     filehandler)
         filehandler.close()
 

@@ -9,7 +9,7 @@ from assistive_functions import to_tensor
 import torch.nn.functional as F
 
 
-class PerfBoostController(nn.Module):
+class PerfBoostControllerAbs(nn.Module):
     """
     Performance boosting controller, following the paper:
         "Learning to Boost the Performance of Stable Nonlinear Systems".
@@ -50,7 +50,7 @@ class PerfBoostController(nn.Module):
         self.input_init = input_init.reshape(1, -1)
         self.output_init = output_init.reshape(1, -1)
         self.d_mech_init = d_mech_init.reshape(1,-1)
-        self.vg_init = torch.zeros_like(self.d_mech_init)
+        self.vg_init = torch.zeros(1,2).reshape(1,-1)
 
         # set dimensions (keep only x and not v for dim_in)
         self.dim_in = self.input_init.shape[-1]
@@ -122,6 +122,9 @@ class PerfBoostController(nn.Module):
         output_REN = output_REN[:,:,0:1]
 
 
+        vg_ = torch.zeros(input_t.shape[0],1,2)
+        vg_[:,:,:] =vg_[0,:]
+
         #Get the current error
         error_vdc = input_t[:,:,0:1] - self.vdc_ref
 
@@ -131,9 +134,8 @@ class PerfBoostController(nn.Module):
 
         error_Q = Q_est-self.Qref
 
-        vg = vg.reshape(-1,1,2)
 
-        mlp_input = torch.cat((w_, vg,d_mech,error_Q,error_vdc), dim=2)
+        mlp_input = torch.cat((w_, vg_,d_mech,error_Q,error_vdc), dim=2)
         mlp_input = mlp_input.view(input_t.shape[0],1, -1)
    
 
@@ -196,4 +198,3 @@ class PerfBoostController(nn.Module):
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
-

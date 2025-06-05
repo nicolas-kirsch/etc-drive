@@ -1,2 +1,2 @@
-from loss_functions.lq_loss import LQLossFH
-from loss_functions.robots_loss import RobotsLoss
+from loss_functions.converter_loss import ConverterLoss
+from loss_functions.mech_loss import MechanicalLoss

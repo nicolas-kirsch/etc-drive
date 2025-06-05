@@ -77,9 +77,16 @@ class ContractiveREN(nn.Module):
         # v signal
         self.D12_shape = (self.dim_nl, self.dim_in)
 
+
+        #Biases
+        self.b_xi_shape = (1,self.dim_internal)      
+        self.b_v_shape = (1,self.dim_nl)
+        self.b_y_shape = (1,2)
+
         # define trainble params
-        self.training_param_names = ['X', 'Y', 'B2', 'C2', 'D21', 'D22', 'D12']
+        self.training_param_names = ['X', 'Y', 'B2', 'C2', 'D21', 'D22', 'D12'] #,'b_y','b_v','b_xi'
         self._init_trainable_params(initialization_std)
+
 
         # mask
         self.register_buffer('eye_mask_H', torch.eye(2 * self.dim_internal + self.dim_nl))
@@ -129,16 +136,16 @@ class ContractiveREN(nn.Module):
         # update each row of w using Eq. (8) with a lower triangular D11
         for i in range(self.dim_nl):
             #  v is element i of v with dim (batch_size, 1)
-            v = F.linear(self.x, self.C1[i, :]) + F.linear(w, self.D11[i, :]) + F.linear(u_in, self.D12[i,:])
+            v = F.linear(self.x, self.C1[i, :]) + F.linear(w, self.D11[i, :]) + F.linear(u_in, self.D12[i,:])# + self.b_v[:,i]
             w = w + (self.eye_mask_w[i, :] * torch.tanh(v / self.Lambda[i])).reshape(batch_size, 1, self.dim_nl)
 
         # compute next state using Eq. 18
         self.x = F.linear(
-            F.linear(self.x, self.F) + F.linear(w, self.B1) + F.linear(u_in, self.B2),
+            F.linear(self.x, self.F) + F.linear(w, self.B1) + F.linear(u_in, self.B2),#+ self.b_xi,
             self.E.inverse())
 
         # compute output
-        y_out = F.linear(self.x, self.C2) + F.linear(w, self.D21) + F.linear(u_in, self.D22)
+        y_out = F.linear(self.x, self.C2) + F.linear(w, self.D21) + F.linear(u_in, self.D22)#+ self.b_y
         return y_out
 
     # init trainable params
@@ -146,6 +153,7 @@ class ContractiveREN(nn.Module):
         for training_param_name in self.training_param_names:  # name of one of the training params, e.g., X
             # read the defined shapes of the selected training param, e.g., X_shape
             shape = getattr(self, training_param_name + '_shape')
+            
             # define the selected param (e.g., self.X) as nn.Parameter
             setattr(self, training_param_name, nn.Parameter((torch.randn(*shape) * initialization_std)))
 

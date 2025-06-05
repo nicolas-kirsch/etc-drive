@@ -12,7 +12,7 @@ from plants import RobotsSystem, RobotsDataset
 from utils.plot_functions import *
 from controllers import PerfBoostController
 from loss_functions import RobotsLoss
-from utils.assistive_functions import WrapLogger
+from assistive_functions import WrapLogger
 
 
 # ----- SET UP LOGGER -----
