@@ -3,10 +3,12 @@ import torch.nn as nn
 import numpy as np
 import time
 from config import device
-from .contractive_ren import ContractiveREN
-from .MLP import MLP
+from .contractive_ren import ContractiveREN, REN
+from .MLP import MLP, RNNModel
 from assistive_functions import to_tensor
 import torch.nn.functional as F
+from collections import OrderedDict
+from controllers.m_operators.ssm import DeepSSM, SSMConfig
 
 
 class PerfBoostController(nn.Module):
@@ -20,7 +22,7 @@ class PerfBoostController(nn.Module):
         the last output ("self.last_output").
     """
     def __init__(
-        self, noiseless_forward, input_init: torch.Tensor, output_init: torch.Tensor,d_mech_init: torch.Tensor,
+        self, noiseless_forward, input_init: torch.Tensor, output_init: torch.Tensor,d_init: torch.Tensor,
         # acyclic REN properties
         dim_internal: int, dim_nl: int, vdc_ref: int,Q_ref: int,batch_size: int,
         initialization_std: float = 0.5,
@@ -47,17 +49,22 @@ class PerfBoostController(nn.Module):
 
         self.output_amplification = output_amplification
         # set initial conditions
-        self.input_init = input_init.reshape(1, -1)
-        self.output_init = output_init.reshape(1, -1)
-        self.d_mech_init = d_mech_init.reshape(1,-1)
-        self.vg_init = torch.zeros_like(self.d_mech_init)
+        self.input_init = input_init
+        self.output_init = output_init.reshape(1, -1,2)
+        self.d_init = d_init
+        self.vg_init = torch.zeros_like(self.d_init)
+        print("PB")
+        print(self.input_init.shape)
+        print(self.output_init.shape)   
 
         # set dimensions (keep only x and not v for dim_in)
         self.dim_in = self.input_init.shape[-1]
         self.dim_out = self.output_init.shape[-1]
         self.dim_out = 2
-
-
+        dim_in_ren = self.dim_in+3+1 # +1 for vdc_ref
+        self.Vbase = 5000
+        self.wbase = 126.66
+        self.ibase = 2222.2
         self.vdc_ref = vdc_ref
         self.Qref = Q_ref
         self.batch_size = batch_size
@@ -65,13 +72,26 @@ class PerfBoostController(nn.Module):
 
         # define the REN
         self.c_ren = ContractiveREN(
-            dim_in=self.dim_in, dim_out=self.dim_out, dim_internal=dim_internal,
+            dim_in=dim_in_ren, dim_out=self.dim_out, dim_internal=dim_internal,
             dim_nl=dim_nl, initialization_std=initialization_std,
             internal_state_init=ren_internal_state_init,
             posdef_tol=posdef_tol, contraction_rate_lb=contraction_rate_lb
         ).to(device)
 
-        self.MLP = MLP(dim_out = 2)
+        self.h = 2.5e-4
+        self.last_dq = torch.zeros((2,1,2)).to(device)
+        self.last_dq[:,:,0] = 3150
+        self.last_dq[:,:,1] = 0
+        self.v_norm_nom = 3150
+
+        self.MLP = MLP(dim_out = self.dim_out)
+        """self.RNN = RNNModel(input_dim=9, hidden_dim=10, output_dim=self.dim_out)
+        #self.c_ren = REN(self.dim_in,self.dim_out,dim_internal,dim_nl,gamma=300)
+
+        # Use default config if none provided, and customize based on parameters
+        self.config = SSMConfig()
+
+        self.emme = DeepSSM(self.dim_in, self.dim_out, self.config).to(device)"""
 
         # define the system dynamics without process noise
         self.noiseless_forward = noiseless_forward
@@ -85,11 +105,13 @@ class PerfBoostController(nn.Module):
         self.t = 0  # time
         self.last_input = self.input_init.detach().clone()
         self.last_output = self.output_init.detach().clone()
-        self.last_d_mech = self.d_mech_init.detach().clone()
+        self.last_d = self.d_init.detach().clone()
         self.last_vg = self.vg_init.detach().clone()
         self.c_ren.x = self.c_ren.init_x    # reset the REN state to the initial value
 
-    def forward(self, input_t: torch.Tensor,d_mech: torch.Tensor,vg:torch.Tensor,init = False):
+        #self.emme.reset()
+
+    def forward(self, input_t: torch.Tensor,d: torch.Tensor,vg:torch.Tensor,init = False, no_PB = False):
         """
         Forward pass of the controller.
 
@@ -100,30 +122,74 @@ class PerfBoostController(nn.Module):
         Return:
             y_out (torch.Tensor): Output with (batch_size, 1, self.dim_out).
         """
+        
         if init:
             w_ = input_t
         else:
+
             # apply noiseless forward to get noise less input (noise less state of the plant)
             u_noiseless = self.noiseless_forward(
                 x=self.last_input,  # last input to the controller is the last state of the plant
                 u_PB=self.last_output,
-                d_mech = self.last_d_mech,
-                vg = self.last_vg  # last output of the controller is the last input to the plant
+                d = self.last_d,
+                in_controller = True,
+                no_PB = no_PB
+                  # last output of the controller is the last input to the plant
             )  # shape = (self.batch_size, 1, self.dim_in)
             
             # reconstruct the noise
             w_ = input_t - u_noiseless # shape = (self.batch_size, 1, self.dim_in)
+            #w_[:,:,0:1] = w_[:,:,0:1]/self.wbase
+            #w_[:,:,1:4] = w_[:,:,1:4]/self.Vbase  # shift the first element to be the error from the reference
+        # reconstruct the noise
+        theta = 2*np.pi*50*self.t*self.h
+
+        v_dq = torch.zeros_like(vg)
+        v_dq[:,:,0] = vg[:,:,0]*np.cos(theta) + vg[:,:,1]*np.sin(theta)
+        v_dq[:,:,1] = -vg[:,:,0]*np.sin(theta) + vg[:,:,1]*np.cos(theta)
+
+        v_norm = np.sqrt(vg[:,:,0:1]**2 + vg[:,:,1:2]**2)
+
+        v_norm_dist = v_norm - self.v_norm_nom
+        v_norm_dist = torch.where(torch.norm(v_norm_dist)>1e-3, v_norm, torch.zeros_like(v_norm_dist))/self.Vbase
 
 
 
-        # apply REN on disturbance
-        output_REN = self.c_ren.forward(w_)
+        is_disturbance = torch.zeros((vg.shape[0],1,1)).to(device)
+        """if torch.norm(v_dq-self.last_dq) > 1e-3:
+            is_disturbance += 1
+            self.last_dq = v_dq"""
+        if torch.norm(v_norm-self.v_norm_nom) > 1e-3:
+            is_disturbance += 1
+            self.last_dq = v_dq
 
-        output_REN = output_REN[:,:,0:1]
+        base = torch.tensor([self.Vbase,self.ibase,self.ibase]).float().to(device)
+        base_w = torch.tensor([self.Vbase,self.ibase,self.ibase,
+                               self.Vbase,self.ibase,self.ibase,self.wbase,self.wbase]).float().to(device)
 
+        w_ = w_/ base_w.view(1, 1, -1)
 
+        pu_vals = input_t[:,:,0:3] / base.view(1, 1, -1)
+        dist_presence = torch.zeros_like(input_t[:,:,0:3])  # shape = (self.batch_size, 1, 1)
+        
+        dist_presence = torch.clone(pu_vals)*is_disturbance
+        
+        
         #Get the current error
-        error_vdc = input_t[:,:,0:1] - self.vdc_ref
+        error_vdc = (input_t[:,:,0:1] - self.vdc_ref)  # shape = (self.batch_size, 1, 1)
+        
+        ren_input = torch.cat((w_,dist_presence,v_norm_dist), dim=2)
+
+
+        mlp_input = torch.cat((w_[:,:,0:4],d,input_t[:,:,0:1]), dim=2)
+        mlp_input = mlp_input.view(input_t.shape[0],1, -1)
+   
+        # apply REN on disturbance
+        output_REN = self.c_ren.forward(ren_input)
+
+        #output_REN = output_REN[:,:,0:1]
+
+
 
 
         Q_est = F.linear(input_t[:,:,1:3],self.vmat).reshape((input_t.shape[0],input_t.shape[1],1))
@@ -131,21 +197,23 @@ class PerfBoostController(nn.Module):
 
         error_Q = Q_est-self.Qref
 
-        vg = vg.reshape(-1,1,2)
 
-        mlp_input = torch.cat((w_, vg,d_mech,error_Q,error_vdc), dim=2)
-        mlp_input = mlp_input.view(input_t.shape[0],1, -1)
-   
 
         # apply MLP on reference plus disturbance 
         output_MLP = self.MLP.forward(mlp_input)
+        #output_RNN = self.RNN.forward(mlp_input)
         
-        output = output_MLP*output_REN*self.output_amplification   # shape = (self.batch_size, 1, self.dim_out)
+        #output = output_MLP*output_REN*self.output_amplification   # shape = (self.batch_size, 1, self.dim_out)
         #output = output[:,:,0:1]
         #output = output.reshape(self.batch_size,1,-1)
         # update internal states
-        self.last_input, self.last_output,self.last_d_mech,self.last_vg = input_t, output,d_mech,vg
+        output = output_REN*output_MLP # shape = (self.batch_size, 1, self.dim_out)
+        #output = torch.clamp(output, min=-2, max=2)  # Clamp output between -2 and 2
+        self.last_input, self.last_output,self.last_d = input_t, output,d
         self.t += 1
+
+        #print(output)
+        #time.sleep(1)
         return output
 
     # setters and getters
@@ -158,6 +226,15 @@ class PerfBoostController(nn.Module):
     def get_parameters_as_vector(self):
         # TODO: implement without numpy
         return np.concatenate([p.detach().clone().cpu().numpy().flatten() for p in self.c_ren.parameters()])
+
+    def get_MLP_parameters(self):
+        # TODO: implement without numpy
+        params =  self.MLP.state_dict()
+        return params
+    
+    def set_MLP_parameters(self, param_dict):
+        self.MLP.load_state_dict(param_dict)
+
 
     def set_parameter(self, name, value):
         current_val = getattr(self.c_ren, name)

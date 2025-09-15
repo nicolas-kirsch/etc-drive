@@ -15,12 +15,14 @@ from assistive_functions import to_tensor
 
 
 class ConverterLoss():
-    def __init__(self, R,Q_Q,Q_vdc,x_min, yref,imax,alpha_i_max=None ):
+    def __init__(self, R,Q_Q,Q_vdc,x_min, yref,imax,alpha_v_max=None ):
 
         self.vmat =(torch.tensor([3000,0])@torch.tensor([[0,-1],[1,0]])).float()
 
         self.imax = imax
-        self.alpha_i_max = alpha_i_max
+        self.alpha_v_max = alpha_v_max
+        self.vmin = 4870
+        self.vmax = 5130
         
         self.xmin = to_tensor(x_min).to(device)
         self.yref = yref
@@ -68,11 +70,11 @@ class ConverterLoss():
             )   # shape = (S, T, 1, 1)
         
         e_vdc = x_batch[:,:,0:1,:]-self.yref[0]
-
+        v_dc = x_batch[:,:,0:1,:]
         evTQev = self.Q_vdc * torch.matmul(
-                e_vdc.transpose(-1, -2),
-                e_vdc
-            )   # shape = (S, T, 1, 1)
+            e_vdc.transpose(-1, -2),
+            e_vdc
+            )  # shape = (S, T, 1, 1)
         
 
         loss_u = torch.sum(uTRu, 1) / x_batch.shape[1] 
@@ -81,13 +83,14 @@ class ConverterLoss():
 
 
         # lower bound on temperature loss
-        if self.alpha_i_max is None:
+        if self.alpha_v_max is None:
             loss_imax = 0
         else:
-            loss_imax = self.alpha_i_max * self.f_upper_bound_i(i_norm_batch) # shape = (S, 1, 1)
+            loss_vmax = self.alpha_v_max * self.f_upper_bound_v(v_dc) # shape = (S, 1, 1)
+            loss_vmin = self.alpha_v_max * self.f_lower_bound_v(v_dc) # shape = (S, 1, 1)
 
 
-        loss_val = loss_eQ + loss_ev + loss_imax 
+        loss_val =  loss_ev  + loss_vmax + loss_vmin 
         loss_val = torch.sum(loss_val, 0)/xs.shape[0] 
         return loss_val   
 
@@ -100,5 +103,23 @@ class ConverterLoss():
         loss_bound = torch.relu(delta)**2 
         loss_xl = loss_bound.sum(1)/loss_bound.shape[1]
         return loss_xl
+
+
+    def f_upper_bound_v(self, v):
+
+        delta = v  - self.vmax
+
+        loss_bound = torch.relu(delta)**2 
+        loss_xl = loss_bound.sum(1)/loss_bound.shape[1]
+        return loss_xl
+    
+    def f_lower_bound_v(self, v):
+
+        delta = self.vmin - v
+
+        loss_bound = torch.relu(delta)**2 
+        loss_xl = loss_bound.sum(1)/loss_bound.shape[1]
+        return loss_xl
+
 
 

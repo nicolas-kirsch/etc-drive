@@ -35,8 +35,8 @@ class CostumDataset(Dataset):
         '''
         Main function to get train and test datasets. No need to modify.
         '''
-        train_data = self._generate_data(2048)
-        test_data = self._generate_data(2048)
+        train_data = self._generate_data(num_train_samples)
+        test_data = self._generate_data(num_test_samples)
         train_data = train_data[0:num_train_samples, :, :]
         test_data = test_data[0:num_test_samples, :, :]
         return train_data, test_data
