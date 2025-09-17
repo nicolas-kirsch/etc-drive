@@ -56,7 +56,7 @@ def print_args(args):
     msg = '\n[INFO] Dataset:  -- num_rollouts: %i' % args.num_rollouts
     msg += ' -- test horizon: %i' % args.horizon + ' -- train horizon: %i' % args.train_horizon
 
-    msg = '\n[INFO] FAULT TYPE: phase lost: %i' % args.phase_loss 
+    msg += '\n[INFO] FAULT TYPE: phase lost: %i' % args.phase_loss 
 
     msg += '\n[INFO] Controller: dimension of the internal state: %i' % args.dim_internal
     msg += ' -- dim_nl: %i' % args.l + ' -- cont_init_std: %.2f'% args.cont_init_std

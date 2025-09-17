@@ -29,7 +29,7 @@ import torch.nn.functional as F
 # ----- SET UP LOGGER -----
 now = datetime.now().strftime("%m_%d_%H_%M_%S")
 save_path = os.path.join(BASE_DIR, 'experiments', 'Converter', 'saved_results')
-save_folder = os.path.join(save_path, 'perf_boost_09_15_12_39_07')
+save_folder = os.path.join(save_path, 'perf_boost_09_16_11_17_04')
 
 logging.basicConfig(filename=os.path.join(save_folder, 'log'), format='%(asctime)s %(message)s', filemode='w')
 logger = logging.getLogger('perf_boost_')
@@ -105,7 +105,7 @@ base_values = None
 
 # ------------ 1. Dataset ------------
 dataset = ConverterDataset(
-    random_seed=args.random_seed, horizon=args.horizon, h=h, phase_loss=args.phase_loss
+    random_seed=args.random_seed, horizon=args.horizon, h=h
 )
 
 # divide to train and test
@@ -134,15 +134,14 @@ for t in range(test_data.shape[1]):
     vb = vg * np.cos(theta - 2*np.pi/3)
     vc = vg * np.cos(theta + 2*np.pi/3)
 
-    if t  > 400 and t < 1200:
-
-        va = 0.2 *  vg * np.cos(theta)
-        vb = 0.2 * vg * np.cos(theta - 2*np.pi/3)
-        vc = vg * np.cos(theta + 2*np.pi/3)
-    elif t > 5000 and t < 6500:
+    if t  > 1000 and t < 3000:
         va = vg * np.cos(theta)
+        vb = 0.3 * vg * np.cos(theta - 2*np.pi/3)
+        vc = 0.3 * vg * np.cos(theta + 2*np.pi/3)
+    elif t > 4000 and t < 5500:
+        va = 0.6 * vg * np.cos(theta)
         vb = 0.6 * vg * np.cos(theta - 2*np.pi/3)
-        vc = 0.6 * vg * np.cos(theta + 2*np.pi/3)
+        vc = vg * np.cos(theta + 2*np.pi/3)
 
     v_alpha = (2/3) * (va - 0.5*vb - 0.5*vc)
     v_beta  = (2/3) * ((np.sqrt(3)/2)*vb - (np.sqrt(3)/2)*vc)

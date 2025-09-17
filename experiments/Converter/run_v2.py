@@ -18,7 +18,7 @@ sys.path.insert(1, BASE_DIR)
 
 from config import device
 from controllers import PerfBoostController
-from arg_parser import argument_parser, print_args
+from arg_parser import argument_parser,print_args
 from assistive_functions import to_tensor
 from plants import ConverterDataset, Converter
 from assistive_functions import WrapLogger
@@ -26,9 +26,13 @@ from loss_functions import ConverterLoss
 import torch.nn.functional as F
 
 
+# ----- parse and set experiment arguments -----
+args = argument_parser()
+n_phase= str(args.phase_loss)+"_phases_lost"
+
 # ----- SET UP LOGGER -----
 now = datetime.now().strftime("%m_%d_%H_%M_%S")
-save_path = os.path.join(BASE_DIR, 'experiments', 'Converter', 'saved_results')
+save_path = os.path.join(BASE_DIR, 'experiments', 'Converter', 'saved_results',n_phase)
 save_folder = os.path.join(save_path, 'perf_boost_'+now)
 os.makedirs(save_folder)
 
@@ -37,11 +41,10 @@ logger = logging.getLogger('perf_boost_')
 logger.setLevel(logging.DEBUG)
 logger = WrapLogger(logger)
 
-
-# ----- parse and set experiment arguments -----
-args = argument_parser()
 msg = print_args(args)    # TODO
 logger.info(msg)
+
+
 x_min = torch.Tensor([70]).to(device)
 x0 = torch.Tensor([[5000],[1000],[1000],[1000],[1000],[1000],[1000],[1000]]).to(device)
 x0 = torch.zeros((1,1,8))
@@ -140,17 +143,14 @@ base_values = None
 
 # ------------ 1. Dataset ------------
 dataset = ConverterDataset(
-    random_seed=args.random_seed, horizon=args.horizon, h=h, phase_loss=args.phase_loss
+    random_seed=args.random_seed, horizon=args.horizon, h=h
 )
 
 # divide to train and test
 train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, num_test_samples=3)
 train_data, test_data = train_data.to(device), test_data.to(device)
-
 train_data = train_data[:,:args.train_horizon,:]
-test_data = test_data[:,:8000,:]
-
-
+test_data = test_data[:,:args.horizon,:]
 vg = 3150 
 for t in range(test_data.shape[1]):
     theta = w * t * h
@@ -162,13 +162,13 @@ for t in range(test_data.shape[1]):
 
     if t  > 1000 and t < 3000:
 
-        va = 0.2 *  vg * np.cos(theta)
-        vb = 0.2 * vg * np.cos(theta - 2*np.pi/3)
-        vc = vg * np.cos(theta + 2*np.pi/3)
-    elif t > 5000 and t < 6500:
-        va = vg * np.cos(theta)
+        va = 0.3 * vg * np.cos(theta)
+        vb = 0.3 * vg * np.cos(theta - 2*np.pi/3)
+        vc =  vg * np.cos(theta + 2*np.pi/3)
+    elif t > 4000 and t < 5500:
+        va = 0.6 * vg * np.cos(theta)
         vb = 0.6 * vg * np.cos(theta - 2*np.pi/3)
-        vc = 0.6 * vg * np.cos(theta + 2*np.pi/3)
+        vc = vg * np.cos(theta + 2*np.pi/3)
 
     v_alpha = (2/3) * (va - 0.5*vb - 0.5*vc)
     v_beta  = (2/3) * ((np.sqrt(3)/2)*vb - (np.sqrt(3)/2)*vc)
@@ -196,10 +196,7 @@ ctl = PerfBoostController(
     output_amplification=20,contraction_rate_lb=1
 ).to(device)
 
-"""save_folder_prev = os.path.join(save_path, 'perf_boost_09_11_15_57_41')
-params = torch.load(os.path.join(save_folder_prev, 'best_controller_params.pth'),weights_only=False)
-ctl.set_parameters_as_vector(params)"""
-#ctl.set_MLP_parameters(params["MLP"])
+
 
 # ------------ 4. Loss ------------
 R = 0
@@ -207,8 +204,7 @@ Q_Q = 0
 Q_vdc = args.Q
 alpha_v_max = args.alpha_v_max
 
-
-msg = 'R: %.2f --- Q_Q: %.2f --- Q_vdc: %.2f --- alpha_v_max: %.2f' % (R, Q_Q, Q_vdc, alpha_v_max)
+msg = 'R: %.2f --- Q_Q: %.2f --- Q_vdc: %.2f --- alpha_i_max: %.2f' % (R, Q_Q, Q_vdc, alpha_v_max)
 
 logger.info(msg)
 
@@ -224,10 +220,7 @@ Q_ref_base = sys.Q_ref_e.cpu().detach().numpy()
 
 print(loss_fn.forward(x_log_base, us))
 
-v_dc_base = x_log_base[1,:,0:1]
-"""plt.plot(np.array(range(v_dc_base.shape[0]))*h, v_dc_base)
-plt.show()
-"""
+
 
 # ------------ 5. Optimizer ------------
 optimizer = torch.optim.Adam(ctl.parameters(), lr=args.lr)
@@ -290,40 +283,38 @@ for epoch in range(1+args.epochs):
                 best_valid_loss = loss_valid.item()
                 best_params = ctl.get_parameters_as_vector()  # record state dict if best on valid
                 best_params_MLP = ctl.get_MLP_parameters()
+
+
                 msg += ' (*** best so far ***)'
-                params_dict = {name: param.detach().cpu() for name, param in ctl.c_ren.named_parameters()}
         logger.info(msg)
 
 
 # set to best seen during training
 if args.return_best:
-
     ctl.set_parameters_as_vector(best_params)
     ctl.set_MLP_parameters(best_params_MLP)
 
     save_params = {"REN":best_params, "MLP": best_params_MLP}
+
     # Save the best parameters
     torch.save(save_params, os.path.join(save_folder, 'best_controller_params.pth'))
     params = torch.load(os.path.join(save_folder, 'best_controller_params.pth'),weights_only=False)
 
 
-    
-    
+
+
 
 with torch.no_grad():
     x_log_test, u_log_test, pb,_ = sys.rollout(
         controller=ctl, data=test_data, no_PB=False
     )
-   
     test_loss = loss_fn.forward(x_log_test, u_log_test)[0][0].item()
-
     print(f"\n TEST loss: {test_loss:.2f}")  ##
 
 
 x_log_base = x_log_base.cpu().detach()
 vdc_log_base = x_log_base[1,:,0:1]
 ig_log_base = x_log_base[1,:,1:3]
-
 
 x_log_test = x_log_test.cpu().detach()
 vdc_log_test = x_log_test[1,:,0:1]
