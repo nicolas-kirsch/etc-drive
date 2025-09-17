@@ -62,8 +62,8 @@ class ContractiveREN(nn.Module):
         else:
             assert isinstance(internal_state_init, torch.Tensor)
             self.x = internal_state_init.reshape(1, 1, self.dim_internal)
-        #self.register_buffer('init_x', self.x.detach().clone())
-        self.init_x = self.x.detach().clone()
+        self.register_buffer('init_x', self.x.detach().clone())
+
         # define matrices shapes
         # auxiliary matrices
         self.X_shape = (2 * self.dim_internal + self.dim_nl, 2 * self.dim_internal + self.dim_nl)
@@ -89,11 +89,8 @@ class ContractiveREN(nn.Module):
 
 
         # mask
-        """self.register_buffer('eye_mask_H', torch.eye(2 * self.dim_internal + self.dim_nl))
+        self.register_buffer('eye_mask_H', torch.eye(2 * self.dim_internal + self.dim_nl))
         self.register_buffer('eye_mask_w', torch.eye(self.dim_nl))
-        """
-        self.eye_mask_w = torch.eye(self.dim_nl)
-        self.eye_mask_H = torch.eye(2 * self.dim_internal + self.dim_nl)
 
     def _update_model_param(self):
         """

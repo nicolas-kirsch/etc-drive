@@ -1,25 +1,24 @@
 import torch
 import numpy as np
-import random
+import random,time
 from plants import CostumDataset
 import matplotlib.pyplot as plt
 
 class ConverterDataset(CostumDataset):
-    def __init__(self, random_seed, horizon, h, phase_loss=2):
+    def __init__(self, random_seed, horizon, h):
         # experiment and file names
         exp_name = 'Converter'
         file_name = 'data_T'+str(horizon)+'_RS'+str(random_seed)+'.pkl'
         self.h = h
-        self.phase_loss = phase_loss
 
         super().__init__(random_seed=random_seed, horizon=horizon, exp_name=exp_name, file_name=file_name)
 
     def _generate_data(self, num_samples):
-
         # generate data
         n_data_total = num_samples
         n_states = 4
         n_w = n_states
+
         #Double state dim: First for l2 dist (init) then for const dist like vg and tau_l
         d = torch.zeros(n_data_total,self.horizon,n_w*2) 
         e = torch.zeros(n_data_total,self.horizon,2)
@@ -34,7 +33,23 @@ class ConverterDataset(CostumDataset):
 
         tau_base = P_base/w_base
 
+        """data_x0 = torch.tensor([1.0000e+0,1.0000e+00,0,  0])
 
+        d[:, 0, :n_w] = data_x0
+        d[:,1:,n_w] = 1e+4/tau_base
+
+        ###Add the vg data###
+        vg = 2900/V_base  # vg in pu
+        w = 2*np.pi*50
+        
+        d[:,1:,n_w + 2] = vg
+
+        print(int(np.floor(num_samples/2)))
+        for t in range(1,d.shape[1]):
+    
+            d[:,t,2] = vg*(np.cos(w*t*h))
+            d[:,t,3] = vg*(np.sin(w*t*h))
+        """
 
         data_x0 = torch.tensor([1.0000e+0*w_base,1.0000e+00*V_base,0,  0])
         #data_x0 = torch.tensor([0,0,0,  0])
@@ -44,13 +59,25 @@ class ConverterDataset(CostumDataset):
         ###Add the vg data###
         vg = 3150  # vg in pu
         w = 2*np.pi*50
+        
 
-        # Parameters
-        batch_size, T = n_data_total, self.horizon
-
-        offset = 0.2 + torch.rand(d.shape[0])*0.8
+        print(int(np.floor(num_samples/2)))
+        offset = 0.2 + torch.rand(d.shape[0])*0.6
         offset[:10] = 0.2
-        """for t in range(d.shape[1]):
+
+        tri_offset = torch.ones((d.shape[0],3))
+        tri_offset[:,2] = offset
+        tri_offset[:,1] = offset
+
+        # shuffle columns independently per row
+        for i in range(d.shape[0]):
+            tri_offset[i,:] = tri_offset[i, torch.randperm(3)]
+
+        va_full = torch.zeros((d.shape[0],d.shape[1],1))
+        vb_full = torch.zeros((d.shape[0],d.shape[1],1))
+        vc_full = torch.zeros((d.shape[0],d.shape[1],1))
+
+        for t in range(d.shape[1]):
             theta = w * t * h
             
             # base cosines (batch-independent)
@@ -68,65 +95,27 @@ class ConverterDataset(CostumDataset):
 
                 #offset[0:10] = 0
                 #offset[-1] = 0.5
-                va = offset * vg * cos_a
-                vb = offset * vg * cos_b
-                vc = vg * cos_c
+                va = tri_offset[:,0] * vg * cos_a
+                vb = tri_offset[:,1] * vg * cos_b
+                vc = tri_offset[:,2] * vg * cos_c
             else:
                 va = vg * cos_a
                 vb = vg * cos_b
-                vc = vg * cos_c"""
+                vc = vg * cos_c
+
+            # Clarke transform (batch-wise)
+            v_alpha = (2/3) * (va - 0.5*vb - 0.5*vc)
+            v_beta  = (2/3) * ((np.sqrt(3)/2)*vb - (np.sqrt(3)/2)*vc)
+
+            va_full[:,t,0] = va
+            vb_full[:,t,0] = vb
+            vc_full[:,t,0] = vc
+
+            d[:, t, n_w+2] = v_alpha
+            d[:, t, n_w+3] = v_beta
 
 
+        #d = d[torch.randperm(d.size(0))]
 
-        # Random offset for each batch
-        offset = 0.2 + torch.rand(batch_size) * 0.7
-        offset[:10] = 0.2  # force first profiles to min
-
-        # Create base cosines (T, 3)
-        t = torch.arange(T) * h
-        theta = w * t
-        cos = torch.stack([
-            torch.cos(theta),
-            torch.cos(theta - 2*np.pi/3),
-            torch.cos(theta + 2*np.pi/3)
-        ], dim=1)  # shape (T, 3)
-
-        # Expand to (batch, T, 3)
-        cos_batch = cos.unsqueeze(0).repeat(batch_size, 1, 1)
-
-        # ---- Scaling factors ----
-        # Each batch needs [1, offset, offset] but shuffled
-        scales = []
-        for i in range(batch_size):
-            if self.phase_loss == 1:
-                base = torch.tensor([1.0, 1.0, offset[i].item()])
-            elif self.phase_loss == 2:
-                base = torch.tensor([offset[i].item(), offset[i].item(),1])
-            elif self.phase_loss == 3:
-                base = torch.tensor([offset[i].item(), offset[i].item(), offset[i].item()])
-            #scales.append(base[torch.randperm(3)])  # shuffle per batch
-        
-            scales.append(base)  # shuffle per batch
-        scales = torch.stack(scales, dim=0)  # (batch, 3)
-        # Make it time dependent (apply only between 600–1000)
-        scale_time = torch.ones((T, 3))
-        scale_time[600:1000] = 0.0  # "indicator" for drop window
-        # Broadcast to (batch, T, 3)
-        scale_time = scale_time.unsqueeze(0).repeat(batch_size, 1, 1)
-
-        # Final scaling: 1 outside drop window, shuffled [1, offset, offset] inside
-        scale_batch = (1 - scale_time) * scales.unsqueeze(1) + scale_time * 1.0
-
-
-        # Apply scaling
-        amps = vg * cos_batch * scale_batch  # (batch, T, 3)
-        va_all, vb_all, vc_all = amps[:,:,0], amps[:,:,1], amps[:,:,2]
-
-
-        # Clarke transform (batch-wise)
-        v_alpha = (2/3) * (va_all - 0.5*vb_all - 0.5*vc_all)
-        v_beta  = (2/3) * ((np.sqrt(3)/2)*vb_all - (np.sqrt(3)/2)*vc_all)
-
-        d[:, :, n_w+2] = v_alpha
-        d[:, :, n_w+3] = v_beta
         return d
+

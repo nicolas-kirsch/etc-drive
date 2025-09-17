@@ -207,7 +207,7 @@ class PerfBoostController(nn.Module):
         #output = output[:,:,0:1]
         #output = output.reshape(self.batch_size,1,-1)
         # update internal states
-        output = output_REN*output_MLP # shape = (self.batch_size, 1, self.dim_out)
+        output = output_REN*output_MLP  # shape = (self.batch_size, 1, self.dim_out)
         #output = torch.clamp(output, min=-2, max=2)  # Clamp output between -2 and 2
         self.last_input, self.last_output,self.last_d = input_t, output,d
         self.t += 1
