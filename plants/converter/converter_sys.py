@@ -118,23 +118,23 @@ class Converter(torch.nn.Module):
 
 
         self.v_mat = to_tensor(np.linalg.inv(np.array([[self.vg[0,0], self.vg[0,1]], 
-                               [self.vg[0,1], -self.vg[0,0]]])))
+                               [self.vg[0,1], -self.vg[0,0]]]))).to(device)
         
         
         #Reference values
-        self.wref = to_tensor(wref)
-        self.Qext = to_tensor(Qref)
+        self.wref = to_tensor(wref).to(device)
+        self.Qext = to_tensor(Qref).to(device)
         print("eeee")
         print(self.Qext)
-        self.original_Qref = self.Qext
+        self.original_Qref = self.Qext.to(device)
 
-        self.vref = to_tensor(vref)
+        self.vref = to_tensor(vref).to(device)
 
-        self.Lg_inv = to_tensor(self.Lg_inv)
-        self.Z = to_tensor(self.Z)
+        self.Lg_inv = to_tensor(self.Lg_inv).to(device)
+        self.Z = to_tensor(self.Z).to(device)
 
-        self.Am, self.Bm, self.KI_m,self.KP_m, self.Bdm = to_tensor(Am),to_tensor(Bm),to_tensor(KI_m),to_tensor(KP_m), to_tensor(Bdm)
-        self.KI_g,self.KP_g,self.KI_dc,self.KP_dc = to_tensor(KI_g),to_tensor(KP_g),to_tensor(KI_dc),to_tensor(KP_dc)
+        self.Am, self.Bm, self.KI_m,self.KP_m, self.Bdm = to_tensor(Am).to(device),to_tensor(Bm).to(device),to_tensor(KI_m).to(device),to_tensor(KP_m).to(device), to_tensor(Bdm).to(device)
+        self.KI_g,self.KP_g,self.KI_dc,self.KP_dc = to_tensor(KI_g).to(device),to_tensor(KP_g).to(device),to_tensor(KI_dc).to(device),to_tensor(KP_dc).to(device)
 
         """        self.vg = to_tensor(self.vg)
         self.vg = torch.zeros(1,1,2)
