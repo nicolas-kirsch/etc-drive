@@ -301,7 +301,7 @@ class Converter(torch.nn.Module):
               # Shape: (batch_size, 1, 2)
             
             #Clarke tranformation
-            vg_angle_tensor = torch.zeros(vg_angle.shape[0], 1, 2, 2)
+            vg_angle_tensor = torch.zeros(vg_angle.shape[0], 1, 2, 2).to(device)
             vg_angle_tensor[:, 0, 0, 0] = vg_angle[:, 0, 0]
             vg_angle_tensor[:, 0, 1, 0] = vg_angle[:, 0, 1]
             vg_angle_tensor[:, 0, 0, 1] = -vg_angle[:, 0, 1]  # Using the J matrix for transformation
