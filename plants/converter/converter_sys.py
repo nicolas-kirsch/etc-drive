@@ -692,7 +692,7 @@ class Converter(torch.nn.Module):
         self.Qref = self.original_Qref 
         w = data[:,:,:self.state_dim]
         d = data[:,:,self.state_dim:]
-        x = w[:,0:1,:]
+        x = w[:,0:1,:].to(device)
         
         self.Qs = torch.full((x.shape[0],1,1),self.original_Qref)
         self.ig_v = torch.zeros((1, 1, 2)).to(device)  # shape = (batch_size, 1, 2)
@@ -712,7 +712,7 @@ class Converter(torch.nn.Module):
         self.w_aug_c = torch.zeros((1, 1, 2)).to(device)
         self.w_aug_c[:,:,1:] = 125.66/self.Cred[0,0,0]
 
-        v = torch.zeros(x.shape)
+        v = torch.zeros(x.shape).to(device)
         """v[:,0:1,:] = to_tensor(np.array([-2.0373e-04*125.6,
                                           -1.9188e-04*3150, -1.9305e-08*2222,1.6000e-09*2222]))"""
         xs = torch.cat((x[:,0:1,1:4],v[:,0:1,1:4],x[:,0:1,0:1],v[:,0:1,0:1]),2)
