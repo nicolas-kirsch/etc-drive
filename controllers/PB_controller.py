@@ -182,7 +182,7 @@ class PerfBoostController(nn.Module):
 
 
         mlp_input = torch.cat((w_[:,:,0:4],d,input_t[:,:,0:1]), dim=2)
-        mlp_input = mlp_input.view(input_t.shape[0],1, -1)
+        mlp_input = mlp_input.view(input_t.shape[0],1, -1).to(device)
    
         # apply REN on disturbance
         output_REN = self.c_ren.forward(ren_input)
@@ -192,11 +192,7 @@ class PerfBoostController(nn.Module):
 
 
 
-        Q_est = F.linear(input_t[:,:,1:3],self.vmat).reshape((input_t.shape[0],input_t.shape[1],1))
-
-
-        error_Q = Q_est-self.Qref
-
+        
 
 
         # apply MLP on reference plus disturbance 
