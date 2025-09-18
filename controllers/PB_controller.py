@@ -148,7 +148,7 @@ class PerfBoostController(nn.Module):
         v_dq[:,:,0] = vg[:,:,0]*np.cos(theta) + vg[:,:,1]*np.sin(theta)
         v_dq[:,:,1] = -vg[:,:,0]*np.sin(theta) + vg[:,:,1]*np.cos(theta)
 
-        v_norm = np.sqrt(vg[:,:,0:1]**2 + vg[:,:,1:2]**2)
+        v_norm = torch.sqrt(vg[:,:,0:1]**2 + vg[:,:,1:2]**2)
 
         v_norm_dist = v_norm - self.v_norm_nom
         v_norm_dist = torch.where(torch.norm(v_norm_dist)>1e-3, v_norm, torch.zeros_like(v_norm_dist))/self.Vbase
