@@ -89,10 +89,10 @@ tensors = {k: torch.tensor(v, dtype=torch.float32) for k, v in data.items()}
 torch.set_printoptions(precision=10)
 
 # Access individual tensors
-Ared = tensors['A_1rb']
-Bred = tensors['B_1rb'].T.unsqueeze(0)
-Cred = tensors['C_2rb'].T.unsqueeze(0)
-Ered = tensors['E_1rb'].T.unsqueeze(0)
+Ared = tensors['A_1rb'].to(device)
+Bred = tensors['B_1rb'].T.unsqueeze(0).to(device)
+Cred = tensors['C_2rb'].T.unsqueeze(0).to(device)
+Ered = tensors['E_1rb'].T.unsqueeze(0).to(device)
 
 #Identity times the r
 """V_base = 5000
@@ -161,6 +161,7 @@ train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, nu
 train_data, test_data = train_data.to(device), test_data.to(device)
 train_data = train_data[:,:args.train_horizon,:]
 test_data = test_data[:,:args.horizon,:]
+
 vg = 3150 
 for t in range(test_data.shape[1]):
     theta = w * t * h

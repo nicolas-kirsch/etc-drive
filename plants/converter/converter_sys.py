@@ -686,7 +686,7 @@ class Converter(torch.nn.Module):
             - controller: state-feedback controller
             - data (torch.Tensor): batch of disturbance samples, with shape (batch_size, T, state_dim)
         """
-        
+
         controller.reset()
 
         self.Qref = self.original_Qref 
