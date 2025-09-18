@@ -344,11 +344,11 @@ vdc_log_test = x_log_test[1,:,0:1]
 ig_log_test = x_log_test[1,:,1:3]
 
 w_log_base = x_log_base[1,:,6]
-vgj = to_tensor(np.array([0, -3000]))
+vgj = torch.tensor(np.array([0, -3000]))
 Q_log_base = vgj[0]*ig_log_base[:,0] + vgj[1]*ig_log_base[:,1]
 
 w_log_test = x_log_test[1,:,6]
-vgj = to_tensor(np.array([0, -3000]))
+vgj = torch.tensor(np.array([0, -3000]))
 Q_log_test = vgj[0]*ig_log_test[:,0] + vgj[1]*ig_log_test[:,1]
 
 
