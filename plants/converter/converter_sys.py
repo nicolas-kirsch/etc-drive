@@ -695,7 +695,7 @@ class Converter(torch.nn.Module):
         d = data[:,:,self.state_dim:]
         x = w[:,0:1,:].to(device)
         
-        self.Qs = torch.full((x.shape[0],1,1),self.original_Qref)
+        self.Qs = torch.full((x.shape[0],1,1),self.original_Qref).to(device)
         self.ig_v = torch.zeros((1, 1, 2)).to(device)  # shape = (batch_size, 1, 2)
         self.idc = 0
         self.w_v = 0
