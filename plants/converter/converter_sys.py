@@ -418,6 +418,7 @@ class Converter(torch.nn.Module):
             self.Qref = torch.where(mask_Q,self.Qref,torch.sqrt(torch.maximum(vg_norm**2*self.igmax**2-P_ref**2,torch.zeros(P_ref.shape).to(device))))
             Q_ref_PB = self.Qref"""
             Q_ref_PB = self.Qs.clone().to(device)
+            P_ref = P_ref.to(device)
             PQ_ref = torch.cat((P_ref,Q_ref_PB),2)
 
             i_ref_presat = F.linear(PQ_ref,self.v_mat)
