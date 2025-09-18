@@ -128,7 +128,7 @@ class Converter(torch.nn.Module):
         print(self.Qext)
         self.original_Qref = self.Qext
 
-        self.vref = to_tensor(vref).to(device)
+        self.vref = to_tensor(np.array([vref])).to(device)
 
         self.Lg_inv = to_tensor(self.Lg_inv).to(device)
         self.Z = to_tensor(self.Z).to(device)
