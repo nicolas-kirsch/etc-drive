@@ -359,6 +359,7 @@ d_ierr = pb[:,:,1:2]+Vref
 
 
 u_log_base = us.cpu().detach()
+u_log_test = u_log_test.cpu().detach()  
 
 d_mech = d_mech.cpu().detach().numpy()
 print(x_log_base[0,-1,:])
