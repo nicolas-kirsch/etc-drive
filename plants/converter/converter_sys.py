@@ -364,7 +364,7 @@ class Converter(torch.nn.Module):
 
         ms_norm = torch.linalg.norm(ms, ord=2, dim=-1, keepdim=True)  # Shape: (batch_size, 1, 1)
 
-        ms_lin_norm_sat = torch.minimum(ms_norm, torch.full_like(ms_norm, self.mg_max))
+        ms_lin_norm_sat = torch.minimum(ms_norm, torch.full_like(ms_norm, self.mg_max).to(device))
         ms_norm_sat = 1/25*torch.log(1/(torch.exp(-25*ms_norm)+torch.exp(-25*torch.tensor([self.mg_max*0.99]))))  # Smooth saturation function
 
         Gamma_2 = ms_norm - ms_norm_sat
