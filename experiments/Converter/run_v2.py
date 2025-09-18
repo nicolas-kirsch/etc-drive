@@ -72,8 +72,14 @@ w = 2 * np.pi * 50
 Lg = np.array([[l, 0], [0, l]])
 Z = np.array([[r, 0], [0, r]])
 
+# Path to this file's directory
+here = os.path.dirname(os.path.abspath(__file__))
+
+# Gains file relative to this directory
+mat_path = os.path.join(here, "gains_small.mat")
+
 # Load the .mat file
-data = scipy.io.loadmat('gains_small.mat')
+data = scipy.io.loadmat(mat_path)
 
 # Remove MATLAB metadata (optional cleanup)
 data = {k: v for k, v in data.items() if not k.startswith('__')}
