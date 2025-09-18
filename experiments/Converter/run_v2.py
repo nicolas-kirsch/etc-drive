@@ -51,7 +51,7 @@ x0 = torch.zeros((1,1,8))
 xref = torch.Tensor([[80]]).to(device)
 
 Wref = 125.66
-Vref = 5000
+Vref = np.array([5000])
 Qref = 0 
 h = 2.5e-4 
 

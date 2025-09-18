@@ -122,11 +122,11 @@ class Converter(torch.nn.Module):
         
         
         #Reference values
-        self.wref = to_tensor(wref).to(device)
-        self.Qext = to_tensor(Qref).to(device)
+        self.wref = to_tensor(wref)
+        self.Qext = to_tensor(Qref)
         print("eeee")
         print(self.Qext)
-        self.original_Qref = self.Qext.to(device)
+        self.original_Qref = self.Qext
 
         self.vref = to_tensor(vref).to(device)
 
