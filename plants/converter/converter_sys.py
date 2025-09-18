@@ -649,8 +649,8 @@ class Converter(torch.nn.Module):
         w = dist[:,:,:self.state_dim]
         d = dist[:,:,self.state_dim:]"""
 
-        v = torch.zeros_like(w)
-        w = torch.cat((w[:,:,1:4],v[:,:,1:4],w[:,:,0:1],v[:,:,0:1]),2)  # Add zero disturbance for the second half of the state vector
+        v = torch.zeros_like(w).to(device)
+        w = torch.cat((w[:,:,1:4],v[:,:,1:4],w[:,:,0:1],v[:,:,0:1]),2).to(device) # Add zero disturbance for the second half of the state vector
 
 
         #Take a step
@@ -719,7 +719,7 @@ class Converter(torch.nn.Module):
         
         init = torch.tensor([ 4.9999536133e+03,  8.2062780762e+02, -6.4584533691e+01,
          5.1859454346e+02,  1.6475370154e-02, -4.1930428147e-01,
-         1.2552771759e+02, -1.5503498316e+00])
+         1.2552771759e+02, -1.5503498316e+00]).to(device)
         
         xs[:,0,:] = init
         self.lpf_iff = 517.1087646484

@@ -92,6 +92,7 @@ class ConverterLoss():
 
         loss_val =  loss_ev  + loss_vmax + loss_vmin 
         loss_val = torch.sum(loss_val, 0)/xs.shape[0] 
+        self.std = torch.std(loss_val,0)
         return loss_val   
 
         

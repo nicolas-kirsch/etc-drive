@@ -29,7 +29,7 @@ import torch.nn.functional as F
 # ----- SET UP LOGGER -----
 now = datetime.now().strftime("%m_%d_%H_%M_%S")
 save_path = os.path.join(BASE_DIR, 'experiments', 'Converter', 'saved_results')
-save_folder = os.path.join(save_path, 'perf_boost_09_16_11_17_04')
+save_folder = os.path.join(save_path, '2_phases_lost/perf_boost_09_17_18_40_28')
 
 logging.basicConfig(filename=os.path.join(save_folder, 'log'), format='%(asctime)s %(message)s', filemode='w')
 logger = logging.getLogger('perf_boost_')
@@ -109,7 +109,7 @@ dataset = ConverterDataset(
 )
 
 # divide to train and test
-train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, num_test_samples=3)
+train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, num_test_samples=args.num_rollouts)
 train_data, test_data = train_data.to(device), test_data.to(device)
 
 test_data = test_data[:,:8000,:]
@@ -125,6 +125,9 @@ loss_fn = ConverterLoss(
     R=R,Q_Q=Q_Q,Q_vdc=Q_vdc, x_min=x_min,yref=yref,imax = imax, alpha_v_max=alpha_v_max  
 )
 
+
+offset = 0.2 + torch.rand(test_data.shape[0])*0.6
+data_third = int(np.floor(test_data.shape[0]/3))
 vg = 3150 
 for t in range(test_data.shape[1]):
     theta = w * t * h
@@ -135,21 +138,52 @@ for t in range(test_data.shape[1]):
     vc = vg * np.cos(theta + 2*np.pi/3)
 
     if t  > 1000 and t < 3000:
-        va = vg * np.cos(theta)
+        va = 0.3 * vg * np.cos(theta)
         vb = 0.3 * vg * np.cos(theta - 2*np.pi/3)
-        vc = 0.3 * vg * np.cos(theta + 2*np.pi/3)
+        vc = vg * np.cos(theta + 2*np.pi/3)
+        va_loss = offset * va
+        vb_loss = offset * vb
+        vc_loss = offset * vc
     elif t > 4000 and t < 5500:
         va = 0.6 * vg * np.cos(theta)
         vb = 0.6 * vg * np.cos(theta - 2*np.pi/3)
         vc = vg * np.cos(theta + 2*np.pi/3)
+        va_loss = offset * va
+        vb_loss = offset * vb
+        vc_loss = offset * vc
+    else: 
+        va_loss =  torch.full_like(offset,va)
+        vb_loss =  torch.full_like(offset,vb)
+        vc_loss =  torch.full_like(offset,vc)
+
+    va = vg * np.cos(theta)
+    vb = vg * np.cos(theta - 2*np.pi/3)
+    vc = vg * np.cos(theta + 2*np.pi/3)
+
+    
+
 
     v_alpha = (2/3) * (va - 0.5*vb - 0.5*vc)
     v_beta  = (2/3) * ((np.sqrt(3)/2)*vb - (np.sqrt(3)/2)*vc)
 
+    v_alpha_ab = (2/3) * (va_loss - 0.5*vb_loss - 0.5*vc)
+    v_beta_ab  = (2/3) * ((np.sqrt(3)/2)*vb_loss - (np.sqrt(3)/2)*vc)
+
+    v_alpha_bc = (2/3) * (va - 0.5*vb_loss - 0.5*vc_loss)
+    v_beta_bc  = (2/3) * ((np.sqrt(3)/2)*vb_loss - (np.sqrt(3)/2)*vc_loss)
+
+    v_alpha_ac = (2/3) * (va_loss - 0.5*vb - 0.5*vc_loss)
+    v_beta_ac  = (2/3) * ((np.sqrt(3)/2)*vb - (np.sqrt(3)/2)*vc_loss)
 
 
-    test_data[:,t,4+2] = v_alpha
-    test_data[:,t,4+3] = v_beta
+    test_data[:data_third,t,4+2] = v_alpha_ab[:data_third]
+    test_data[:data_third,t,4+3] = v_beta_ab[:data_third]
+
+    test_data[data_third:data_third*2,t,4+2] = v_alpha_bc[data_third:data_third*2]
+    test_data[data_third:data_third*2,t,4+3] = v_beta_bc[data_third:data_third*2]
+
+    test_data[data_third*2:,t,4+2] = v_alpha_ac[data_third*2:]
+    test_data[data_third*2:,t,4+3] = v_beta_ac[data_third*2:]
 
 
 
@@ -181,8 +215,11 @@ with torch.no_grad():
     )
 
     test_loss = loss_fn.forward(x_log_test, u_log_test)[0][0].item()
-
+    test_loss_std = loss_fn.std
+    base_loss = loss_fn.forward(x_log_base, u_log_test)[0][0].item()
+    base_loss_std = loss_fn.std
     print(f"\n TEST loss: {test_loss:.2f}")  ##
+    print(f"\n BASE loss: {base_loss:.2f}")  ##
 
 x_log_base = x_log_base.cpu().detach()
 vdc_log_base = x_log_base[1,:,0:1]
@@ -191,8 +228,46 @@ ig_log_base = x_log_base[1,:,1:3]
 x_log_test = x_log_test.cpu().detach()
 vdc_log_test = x_log_test[1,:,0:1]
 
+
+x_log_base_ab = x_log_base[:data_third,:,:]
+x_log_base_bc = x_log_base[data_third:data_third*2,:,:]
+x_log_base_ac = x_log_base[data_third*2:,:,:]
+
+x_log_test_ab = x_log_test[:data_third,:,:]
+x_log_test_bc = x_log_test[data_third:data_third*2,:,:]
+x_log_test_ac = x_log_test[data_third*2:,:,:]
+
+test_loss_ab = loss_fn.forward(x_log_test_ab, u_log_test)[0][0].item()
+test_loss_ab_std = loss_fn.std
+test_loss_bc = loss_fn.forward(x_log_test_bc, u_log_test)[0][0].item()
+test_loss_bc_std = loss_fn.std
+test_loss_ac = loss_fn.forward(x_log_test_ac, u_log_test)[0][0].item()
+test_loss_ac_std = loss_fn.std
+
+
+base_loss_ab = loss_fn.forward(x_log_base_ab, u_log_test)[0][0].item()
+base_loss_ab_std = loss_fn.std
+base_loss_bc = loss_fn.forward(x_log_base_bc, u_log_test)[0][0].item()
+base_loss_bc_std = loss_fn.std
+base_loss_ac = loss_fn.forward(x_log_base_ac, u_log_test)[0][0].item()
+base_loss_ac_std = loss_fn.std
+
+
+print(f"\n TEST loss AB: {test_loss_ab:.2f}")  ##
+
+print(f"\n BASE loss AB: {base_loss_ab:.2f}")  ##
+
+print(f"\n TEST loss BC: {test_loss_bc:.2f}")  ##
+
+print(f"\n BASE loss BC: {base_loss_bc:.2f}")  ##
+
+print(f"\n TEST loss AC: {test_loss_ac:.2f}")  ##
+
+print(f"\n BASE loss AC: {base_loss_ac:.2f}")  ##
+
+
 # Create a figure with a 2x2 grid of subplots
-fig, axs = plt.subplots(1, 1, figsize=(13, 9))
+fig, axs = plt.subplots(1, 1, figsize=(13, 8))
 
 # Plot 1: X profile over the horizon
 #axs[0, 0].plot(np.array(range(vdc_log_base.shape[0]))*h, vdc_log_test[0],label = f"rPB")
@@ -212,5 +287,5 @@ axs.grid()
 plt.tight_layout()
 plt.subplots_adjust(top=0.9)  # Adjust the top space to make room for the suptitle
 
-plt.suptitle(f'System evolution', fontsize=17)
+plt.suptitle(f'Loss of phase A and B', fontsize=17)
 plt.show()
