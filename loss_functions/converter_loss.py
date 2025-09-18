@@ -17,7 +17,7 @@ from assistive_functions import to_tensor
 class ConverterLoss():
     def __init__(self, R,Q_Q,Q_vdc,x_min, yref,imax,alpha_v_max=None ):
 
-        self.vmat =(torch.tensor([3000,0])@torch.tensor([[0,-1],[1,0]])).float()
+        self.vmat =(torch.tensor([3000,0])@torch.tensor([[0,-1],[1,0]])).float().to(device)
 
         self.imax = imax
         self.alpha_v_max = alpha_v_max
