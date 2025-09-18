@@ -43,7 +43,6 @@ class Converter(torch.nn.Module):
         l = l1+l2
         
         self.Lg_inv = np.linalg.inv(self.Lg)
-        print(torch.eye(2)-self.h*self.Lg_inv@self.Z)
 
         self.x0 = x0
 
@@ -362,10 +361,8 @@ class Converter(torch.nn.Module):
 
     def gen_mg_G2(self,ms: torch.Tensor):
 
-        print("ms",ms.device)
 
         ms_norm = torch.linalg.norm(ms, ord=2, dim=-1, keepdim=True)  # Shape: (batch_size, 1, 1)
-        print("ms_norm",ms_norm.device)
         ms_lin_norm_sat = torch.minimum(ms_norm, torch.full_like(ms_norm, self.mg_max).to(device))
         ms_norm_sat = 1/25*torch.log(1/(torch.exp(-25*ms_norm)+torch.exp(-25*torch.tensor([self.mg_max*0.99]).to(device))))  # Smooth saturation function
 
@@ -528,7 +525,6 @@ class Converter(torch.nn.Module):
         vg_angle = vg/ vg_norm
 
         us,ig_v = self.PI_g(ig_e,ig_v, vff, vg_angle)  # Compute the control input based on current error and feedforward voltage
-        print(us.device)
         if no_PB:
             mg_in = us / v_dc  # Convert control input to mechanical generator input
             
@@ -536,8 +532,6 @@ class Converter(torch.nn.Module):
  
             mg_in = us / v_dc + d_mg
 
-        print("v_dc",v_dc.device)
-        print("mg_in",mg_in.device)
 
         #mg_in = us / v_dc 
 
@@ -623,7 +617,7 @@ class Converter(torch.nn.Module):
         """
         v_dc_ = (1-self.h*self.G/self.C)*v_dc - self.h/self.C*iff+ self.h/self.C*torch.bmm(mg,ig.transpose(1, 2))
 
-        ig_ = F.linear(ig,torch.eye(2)-self.h*self.Lg_inv@self.Z) - self.h*F.linear(
+        ig_ = F.linear(ig,torch.eye(2).to(device)-self.h*self.Lg_inv@self.Z) - self.h*F.linear(
             mg*v_dc,self.Lg_inv) + self.h*F.linear(vg,self.Lg_inv)
 
         #ig_ = ig_ = F.linear(ig,torch.eye(2)-self.h*self.Lg_inv@self.Z) + self.h*F.linear(vg,self.Lg_inv)
