@@ -526,7 +526,7 @@ class Converter(torch.nn.Module):
         vg_angle = vg/ vg_norm
 
         us,ig_v = self.PI_g(ig_e,ig_v, vff, vg_angle)  # Compute the control input based on current error and feedforward voltage
-        
+        print(us.device)
         if no_PB:
             mg_in = us / v_dc  # Convert control input to mechanical generator input
             
