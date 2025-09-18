@@ -533,7 +533,9 @@ class Converter(torch.nn.Module):
         else:
  
             mg_in = us / v_dc + d_mg
-            
+
+        print("v_dc",v_dc.device)
+        print("mg_in",mg_in.device)
 
         #mg_in = us / v_dc 
 
