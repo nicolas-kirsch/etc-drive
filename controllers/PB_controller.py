@@ -152,7 +152,7 @@ class PerfBoostController(nn.Module):
 
         v_norm_dist = v_norm - self.v_norm_nom
         v_norm_dist = torch.where(torch.norm(v_norm_dist)>1e-3, v_norm, torch.zeros_like(v_norm_dist))/self.Vbase
-
+        v_norm_dist = v_norm_dist.to(device)
 
 
         is_disturbance = torch.zeros((vg.shape[0],1,1)).to(device)
@@ -167,13 +167,13 @@ class PerfBoostController(nn.Module):
         base_w = torch.tensor([self.Vbase,self.ibase,self.ibase,
                                self.Vbase,self.ibase,self.ibase,self.wbase,self.wbase]).float().to(device)
 
-        w_ = w_/ base_w.view(1, 1, -1)
+        w_ = w_/ base_w.view(1, 1, -1).to(device)
 
         pu_vals = input_t[:,:,0:3] / base.view(1, 1, -1)
         dist_presence = torch.zeros_like(input_t[:,:,0:3])  # shape = (self.batch_size, 1, 1)
         
         dist_presence = torch.clone(pu_vals)*is_disturbance
-        
+        dist_presence = dist_presence.to(device)
         
         #Get the current error
         error_vdc = (input_t[:,:,0:1] - self.vdc_ref)  # shape = (self.batch_size, 1, 1)
