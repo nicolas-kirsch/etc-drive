@@ -727,11 +727,11 @@ class Converter(torch.nn.Module):
         self.lpf_iff_c = 517.108764648
         self.lpf_vdcerr_c = -0.0468370356
         
-        d_mech = torch.zeros(xs.shape[0],1,1)
+        d_mech = torch.zeros(xs.shape[0],1,1).to(device)
         
-        self.Q_ref_e = torch.zeros(xs.shape[0],1,1)
+        self.Q_ref_e = torch.zeros(xs.shape[0],1,1).to(device)
 
-        vg = self.vg.repeat(xs.shape[0],1,1)
+        vg = self.vg.repeat(xs.shape[0],1,1).to(device)
         u_PB = controller.forward(xs[:, 0:1, :],d[:, 0:1, :],vg,init = True)
         #u_PB = torch.zeros(xs.shape[0],1,2)  # Set u_PB to zero for testing purposes
         uuu = u_PB.clone().detach()
