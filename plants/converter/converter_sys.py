@@ -274,7 +274,7 @@ class Converter(torch.nn.Module):
             idc = idc + i_dc * self.h  # Update the integrator state
             
 
-            idc_max = torch.clamp(idc_max, min=torch.zeros_like(i_dc), max=torch.full_like(idc_max, 1.2*self.igmax*self.vg_nom/self.vref))  # Ensure idc_max is not greater than the maximum DC current
+            idc_max = torch.clamp(idc_max, min=torch.zeros_like(i_dc), max=torch.full_like(idc_max, 1.2*self.igmax*self.vg_nom/self.vref.item()))  # Ensure idc_max is not greater than the maximum DC current
             idc = torch.clamp(idc, min=-idc_max, max=idc_max)
             P_dc = idc * self.vref  # Calculate the DC power 
             if in_controller:
