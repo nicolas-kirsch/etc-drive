@@ -188,7 +188,8 @@ train_dataloader = DataLoader(train_data, batch_size=args.num_rollouts, shuffle=
 
 sys  = Converter(x0,wref,vref,qref,h,m,d,c,g,lg,z,l,base_values,Ared,Bred,Cred,Ered)
 
-
+sys = sys.to(device)
+print("AAaaaaaaaah")
 # ------------ 3. Controller ------------
 ctl = PerfBoostController(
     noiseless_forward=sys.noiseless_forward,
