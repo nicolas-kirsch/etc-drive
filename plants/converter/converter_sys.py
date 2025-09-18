@@ -133,8 +133,8 @@ class Converter(torch.nn.Module):
         self.Lg_inv = to_tensor(self.Lg_inv).to(device)
         self.Z = to_tensor(self.Z).to(device)
 
-        self.Am, self.Bm, self.KI_m,self.KP_m, self.Bdm = to_tensor(Am).to(device),to_tensor(Bm).to(device),to_tensor(KI_m).to(device),to_tensor(KP_m).to(device), to_tensor(Bdm).to(device)
-        self.KI_g,self.KP_g,self.KI_dc,self.KP_dc = to_tensor(KI_g).to(device),to_tensor(KP_g).to(device),to_tensor(KI_dc).to(device),to_tensor(KP_dc).to(device)
+        self.Am, self.Bm, self.KI_m,self.KP_m, self.Bdm = to_tensor(Am),to_tensor(Bm),to_tensor(KI_m),to_tensor(KP_m), to_tensor(Bdm)
+        self.KI_g,self.KP_g,self.KI_dc,self.KP_dc = to_tensor(KI_g),to_tensor(KP_g),to_tensor(KI_dc),to_tensor(KP_dc)
 
         """        self.vg = to_tensor(self.vg)
         self.vg = torch.zeros(1,1,2)
