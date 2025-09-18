@@ -141,10 +141,14 @@ imax = 2222
 
 base_values = None
 
+msg = 'Creating the dataset'
+logger.info(msg)
+
 # ------------ 1. Dataset ------------
 dataset = ConverterDataset(
     random_seed=args.random_seed, horizon=args.horizon, h=h
 )
+
 
 # divide to train and test
 train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, num_test_samples=3)
@@ -184,7 +188,6 @@ train_dataloader = DataLoader(train_data, batch_size=args.num_rollouts, shuffle=
 
 sys  = Converter(x0,wref,vref,qref,h,m,d,c,g,lg,z,l,base_values,Ared,Bred,Cred,Ered)
 
-print(sys.u_init.shape)
 
 # ------------ 3. Controller ------------
 ctl = PerfBoostController(
@@ -215,10 +218,19 @@ loss_fn = ConverterLoss(
 )
 
 
+msg = 'Rolling out the base controller'
+logger.info(msg)
+
+
 x_log_base,us,u_PB,d_mech = sys.rollout(ctl,test_data, no_PB=True)
 Q_ref_base = sys.Q_ref_e.cpu().detach().numpy()
 
-print(loss_fn.forward(x_log_base, us))
+
+
+loss_base = loss_fn.forward(x_log_base, us)
+
+msg = 'Base controller loss: %.2f' % (loss_base[0][0].item())
+logger.info(msg)
 
 
 
@@ -310,6 +322,8 @@ with torch.no_grad():
     )
     test_loss = loss_fn.forward(x_log_test, u_log_test)[0][0].item()
     print(f"\n TEST loss: {test_loss:.2f}")  ##
+    msg = '\n TEST loss: %.2f' % (test_loss)
+    logger.info(msg)
 
 
 x_log_base = x_log_base.cpu().detach()

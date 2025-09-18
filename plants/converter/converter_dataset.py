@@ -72,7 +72,6 @@ class ConverterDataset(CostumDataset):
         # shuffle columns independently per row
         for i in range(d.shape[0]):
             tri_offset[i,:] = tri_offset[i, torch.randperm(3)]
-        print("zizozizo")
         va_full = torch.zeros((d.shape[0],d.shape[1],1))
         vb_full = torch.zeros((d.shape[0],d.shape[1],1))
         vc_full = torch.zeros((d.shape[0],d.shape[1],1))
