@@ -735,7 +735,7 @@ class Converter(torch.nn.Module):
         u_PB = controller.forward(xs[:, 0:1, :],d[:, 0:1, :],vg,init = True)
         #u_PB = torch.zeros(xs.shape[0],1,2)  # Set u_PB to zero for testing purposes
         uuu = u_PB.clone().detach()
-        u_cont = torch.zeros(xs.shape[0],1,2)
+        u_cont = torch.zeros(xs.shape[0],1,2).to(device)
 
 
         for t in range(1, data.shape[1]):
