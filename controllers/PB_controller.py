@@ -159,7 +159,7 @@ class PerfBoostController(nn.Module):
         v_norm_dist = v_norm_dist
 
 
-        is_disturbance = torch.zeros((vg.shape[0],1,1)).to(device)
+        is_disturbance = torch.zeros((vg.shape[0],1,1),device=device)
         """if torch.norm(v_dq-self.last_dq) > 1e-3:
             is_disturbance += 1
             self.last_dq = v_dq"""
