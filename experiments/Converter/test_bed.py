@@ -105,15 +105,15 @@ base_values = None
 
 # ------------ 1. Dataset ------------
 dataset = ConverterDataset(
-    random_seed=args.random_seed, horizon=args.horizon, h=h
+    random_seed=args.random_seed, horizon=args.horizon, h=h,n_phases_lost=args.phase_loss
 )
 
 # divide to train and test
 train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, num_test_samples=args.num_rollouts)
 train_data, test_data = train_data.to(device), test_data.to(device)
 
-test_data = test_data[:,:8000,:]
-train_data = train_data[:,:1000,:]
+train_data = train_data[:,:args.train_horizon,:]
+test_data = test_data[:,:args.horizon,:]
 # ------------ 4. Loss ------------
 R = 0
 Q_Q = 0

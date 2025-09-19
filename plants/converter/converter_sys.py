@@ -76,7 +76,11 @@ class Converter(torch.nn.Module):
 
         
         self.mg_max = 1/np.sqrt(2)
+        self.mg_max = self.mg_max.astype(np.float32)
 
+        self.mg_max_99 = torch.tensor([(self.mg_max*0.99).astype(np.float32)]).to(device)
+
+        self.eye = torch.eye(2).to(device)
 
         Am = np.array([[(1-self.h*D/Jtot)]])
         Bm = np.array([[self.h/Jtot]])
@@ -300,7 +304,7 @@ class Converter(torch.nn.Module):
               # Shape: (batch_size, 1, 2)
             
             #Clarke tranformation
-            vg_angle_tensor = torch.zeros(vg_angle.shape[0], 1, 2, 2).to(device)
+            vg_angle_tensor = self.vg_angle.clone()
             vg_angle_tensor[:, 0, 0, 0] = vg_angle[:, 0, 0]
             vg_angle_tensor[:, 0, 1, 0] = vg_angle[:, 0, 1]
             vg_angle_tensor[:, 0, 0, 1] = -vg_angle[:, 0, 1]  # Using the J matrix for transformation
@@ -363,8 +367,8 @@ class Converter(torch.nn.Module):
 
 
         ms_norm = torch.linalg.norm(ms, ord=2, dim=-1, keepdim=True)  # Shape: (batch_size, 1, 1)
-        ms_lin_norm_sat = torch.minimum(ms_norm, torch.full_like(ms_norm, self.mg_max).to(device))
-        ms_norm_sat = 1/25*torch.log(1/(torch.exp(-25*ms_norm)+torch.exp(-25*torch.tensor([self.mg_max*0.99]).to(device))))  # Smooth saturation function
+        ms_lin_norm_sat = torch.minimum(ms_norm, torch.full_like(ms_norm, self.mg_max))
+        ms_norm_sat = 1/25*torch.log(1/(torch.exp(-25*ms_norm)+torch.exp(-25*self.mg_max_99)))  # Smooth saturation function
 
         Gamma_2 = ms_norm - ms_norm_sat
 
@@ -416,8 +420,8 @@ class Converter(torch.nn.Module):
             mask_Q = self.Qref**2<vg_norm**2*self.igmax**2-P_ref**2
             self.Qref = torch.where(mask_Q,self.Qref,torch.sqrt(torch.maximum(vg_norm**2*self.igmax**2-P_ref**2,torch.zeros(P_ref.shape).to(device))))
             Q_ref_PB = self.Qref"""
-            Q_ref_PB = self.Qs.clone().to(device)
-            P_ref = P_ref.to(device)
+            Q_ref_PB = self.Qs.clone()
+            P_ref = P_ref
             PQ_ref = torch.cat((P_ref,Q_ref_PB),2)
 
             i_ref_presat = F.linear(PQ_ref,self.v_mat)
@@ -617,7 +621,7 @@ class Converter(torch.nn.Module):
         """
         v_dc_ = (1-self.h*self.G/self.C)*v_dc - self.h/self.C*iff+ self.h/self.C*torch.bmm(mg,ig.transpose(1, 2))
 
-        ig_ = F.linear(ig,torch.eye(2).to(device)-self.h*self.Lg_inv@self.Z) - self.h*F.linear(
+        ig_ = F.linear(ig,self.eye-self.h*self.Lg_inv@self.Z) - self.h*F.linear(
             mg*v_dc,self.Lg_inv) + self.h*F.linear(vg,self.Lg_inv)
 
         #ig_ = ig_ = F.linear(ig,torch.eye(2)-self.h*self.Lg_inv@self.Z) + self.h*F.linear(vg,self.Lg_inv)
@@ -648,8 +652,8 @@ class Converter(torch.nn.Module):
         w = dist[:,:,:self.state_dim]
         d = dist[:,:,self.state_dim:]"""
 
-        v = torch.zeros_like(w).to(device)
-        w = torch.cat((w[:,:,1:4],v[:,:,1:4],w[:,:,0:1],v[:,:,0:1]),2).to(device) # Add zero disturbance for the second half of the state vector
+        v = torch.zeros_like(w)
+        w = torch.cat((w[:,:,1:4],v[:,:,1:4],w[:,:,0:1],v[:,:,0:1]),2) # Add zero disturbance for the second half of the state vector
 
 
         #Take a step
@@ -705,6 +709,10 @@ class Converter(torch.nn.Module):
         #LPFs
         self.lpf_iff_c = 0
         self.lpf_vdcerr_c = 0
+
+
+        self.vg_angle = torch.zeros(d.shape[0], 1, 2, 2).to(device)
+
 
         self.w_aug = torch.zeros((1, 1, 2)).to(device)  # shape = (batch_size, 1, state_dim*2)
         self.w_aug[:,:,1:] = 125.66/self.Cred[0,0,0]
@@ -804,147 +812,3 @@ class Converter(torch.nn.Module):
         return xs, u_cont,u_PB,d_mech
         
  
-"""x_min = torch.Tensor([70]).to(device)
-x0 = torch.Tensor([[5000],[1000],[1000],[1000],[1000],[1000]]).to(device)
-xref = torch.Tensor([[80]]).to(device)
-
-Wref = 125.66
-Vref = 5000
-Qref = 0 
-h = 2.5e-4
-
-yref = torch.Tensor([Vref,Qref]).to(device)
-
-M = 4364.5
-D = 1e-4
-C = 0.0040
-G = 1e-5
-l1 = 3.5e-04
-l2 = 5.4154e-04
-l = l1+l2
-l = 3.5897e-3
-r = 0.08
-r = 4.4797e-2
-w = 2 * np.pi * 50
-
-Lg = np.array([[l, 0], [0, l]])
-Z = np.array([[r, 0], [0, r]])
-
-# Load the .mat file
-data = scipy.io.loadmat('gains_small.mat')
-
-# Remove MATLAB metadata (optional cleanup)
-data = {k: v for k, v in data.items() if not k.startswith('__')}
-
-# Convert each to PyTorch tensor
-tensors = {k: torch.tensor(v, dtype=torch.float32) for k, v in data.items()}
-torch.set_printoptions(precision=10)
-
-# Access individual tensors
-Ared = tensors['A_1rb']
-Bred = tensors['B_1rb'].T.unsqueeze(0)
-Cred = tensors['C_2rb'].T.unsqueeze(0)
-Ered = tensors['E_1rb'].T.unsqueeze(0)
-print(Cred)
-m = M
-d = D
-c = C
-g = G
-
-wref = Wref
-vref = Vref
-qref = Qref
-
-lg = Lg
-z = Z
-l = l
-
-imax = 2222
-
-base_values = None
-
-
-
-conv = Converter(x0,wref,vref,qref,h,m,d,c,g,lg,z,l,base_values,Ared,Bred,Cred,Ered)
-
-a = torch.zeros(1,1,2)
-b = torch.zeros(1,1,2)
-c = torch.zeros(1,1,2)
-
-idc = torch.zeros(1,1,1)
-ig_v = torch.zeros(1,1,2)
-
-vdc = torch.zeros(1,1,1)
-vdc[:,:,0] = 5000
-
-ig = torch.zeros(1,1,2)
-
-P_mech = torch.zeros(1,1,1)
-P_mech[:,:,0] = 1e+6
-
-vg = torch.zeros(1,1,2)
-vg[:,:,0] = 3150
-
-wref = torch.zeros(1,1,1)
-wref[:,:,0] = 125.66
-
-a[:,:,0] = 3000
-b[:,:,0] = 1e+6
-c[:,:,0] = 1
-
-a[:,:,1] = 0
-b[:,:,1] = 0
-c[:,:,1] = -8
-u = torch.zeros(1,1,1)
-v = torch.zeros(1,1,2)
-conv.Qs = torch.zeros(1,1,1)
-x = torch.zeros(1,1,2)
-w_v = torch.zeros(1,1,1)
-w = torch.zeros(1,1,1)
-tau_l = torch.zeros(1,1,1)
-tau_m = torch.zeros(1,1,1)
-P_max = torch.zeros(1,1,1)
-w_aug = torch.zeros(1,1,2)
-w_aug[:,:,1:] = 125.66/Cred[0,0,0]
-print(w_aug[:,:,1:])
-w[:,:,0] = 125
-P_max[:,:,0] = 4e+6
-
-tau_l[:,:,0] = -2e+4
-
-tau_m[:,:,0] = 2e+4
-
-x[:,:,0] = 125
-
-for i in range(90000):
-    #vdc[:,:,0] = 5000 + i*conv.h
-    vg[:,:,0] = np.cos(2*np.pi*5*i*conv.h)*10000
-    vg[:,:,1] = np.sin(2*np.pi*5*i*conv.h)*10000
-
-
-    
-    #us, ig_v = conv.PI_g(c,ig_v,a,vg_angle)
-    #print(ig_v)
-    #us,ig_v,idc = conv.gen_mg(vdc,idc,ig,ig_v,P_mech,vg, no_PB=True)
-
-    #w_aug,w = conv.mech_dynamics(w_aug,tau_m,tau_l)  # Update the augmented state with the mechanical input
-    #u = torch.cat((u,w),dim = 1)
-    
-
-    P_mech,w_,w_v = conv.compute_P_mech(x,tau_l,P_max)
-    x = torch.cat((w_, w_v), dim=2)
-    u = torch.cat((u,w_),dim = 1)
-
-
-
-plt.figure()
-plt.plot(np.array(range(u.shape[1]-1))*h,u[0,1:,0].detach().numpy(), label = r"$w$")
-plt.xlabel("Time (s)")
-plt.ylabel(r"$w$")
-plt.ylim(124.6, 126.8)
-plt.grid(True, which='both', axis='both', linestyle='--', linewidth=0.5)
-plt.xticks(np.arange(0, u.shape[1]*h, 2))
-plt.yticks(np.arange(124.6, 126.8, 0.2))
-plt.legend()
-plt.show()"""
-

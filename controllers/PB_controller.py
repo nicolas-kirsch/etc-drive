@@ -68,7 +68,11 @@ class PerfBoostController(nn.Module):
         self.vdc_ref = vdc_ref
         self.Qref = Q_ref
         self.batch_size = batch_size
-        self.vmat =(torch.tensor([0.6,0]).float()@torch.tensor([[0,-1],[1,0]]).float()).float()
+        self.vmat =(torch.tensor([0.6,0]).float()@torch.tensor([[0,-1],[1,0]]).float()).float().to(device)
+
+        self.base = torch.tensor([self.Vbase,self.ibase,self.ibase]).float().to(device)
+        self.base_w = torch.tensor([self.Vbase,self.ibase,self.ibase,
+                               self.Vbase,self.ibase,self.ibase,self.wbase,self.wbase]).float().to(device)
 
         # define the REN
         self.c_ren = ContractiveREN(
@@ -152,7 +156,7 @@ class PerfBoostController(nn.Module):
 
         v_norm_dist = v_norm - self.v_norm_nom
         v_norm_dist = torch.where(torch.norm(v_norm_dist)>1e-3, v_norm, torch.zeros_like(v_norm_dist))/self.Vbase
-        v_norm_dist = v_norm_dist.to(device)
+        v_norm_dist = v_norm_dist
 
 
         is_disturbance = torch.zeros((vg.shape[0],1,1)).to(device)
@@ -163,17 +167,14 @@ class PerfBoostController(nn.Module):
             is_disturbance += 1
             self.last_dq = v_dq
 
-        base = torch.tensor([self.Vbase,self.ibase,self.ibase]).float().to(device)
-        base_w = torch.tensor([self.Vbase,self.ibase,self.ibase,
-                               self.Vbase,self.ibase,self.ibase,self.wbase,self.wbase]).float().to(device)
+        
 
-        w_ = w_/ base_w.view(1, 1, -1).to(device)
+        w_ = w_/ self.base_w.view(1, 1, -1)
 
-        pu_vals = input_t[:,:,0:3] / base.view(1, 1, -1)
+        pu_vals = input_t[:,:,0:3] / self.base.view(1, 1, -1)
         dist_presence = torch.zeros_like(input_t[:,:,0:3])  # shape = (self.batch_size, 1, 1)
         
         dist_presence = torch.clone(pu_vals)*is_disturbance
-        dist_presence = dist_presence.to(device)
         
         #Get the current error
         error_vdc = (input_t[:,:,0:1] - self.vdc_ref)  # shape = (self.batch_size, 1, 1)
@@ -182,7 +183,7 @@ class PerfBoostController(nn.Module):
 
 
         mlp_input = torch.cat((w_[:,:,0:4],d,input_t[:,:,0:1]), dim=2)
-        mlp_input = mlp_input.view(input_t.shape[0],1, -1).to(device)
+        mlp_input = mlp_input.view(input_t.shape[0],1, -1)
    
         # apply REN on disturbance
         output_REN = self.c_ren.forward(ren_input)

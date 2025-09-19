@@ -5,12 +5,12 @@ from plants import CostumDataset
 import matplotlib.pyplot as plt
 
 class ConverterDataset(CostumDataset):
-    def __init__(self, random_seed, horizon, h):
+    def __init__(self, random_seed, horizon, h,n_phases_lost=2):
         # experiment and file names
         exp_name = 'Converter'
         file_name = 'data_T'+str(horizon)+'_RS'+str(random_seed)+'.pkl'
         self.h = h
-
+        self.n_phases_lost = n_phases_lost
         super().__init__(random_seed=random_seed, horizon=horizon, exp_name=exp_name, file_name=file_name)
 
     def _generate_data(self, num_samples):
@@ -65,9 +65,30 @@ class ConverterDataset(CostumDataset):
         offset = 0.2 + torch.rand(d.shape[0])*0.6
         #offset[:20] = 0.2
 
+        data_third = int(np.floor(d.shape[0]/3))
         tri_offset = torch.ones((d.shape[0],3))
-        tri_offset[:,2] = offset
-        tri_offset[:,1] = offset
+
+        if self.n_phases_lost == 1:
+            tri_offset[:,0] = offset
+        elif self.n_phases_lost == 2:
+            tri_offset[:,2] = offset
+            tri_offset[:,1] = offset
+        elif self.n_phases_lost == 3:
+            tri_offset[:,2] = offset
+            tri_offset[:,1] = offset
+            tri_offset[:,0] = offset
+        else: 
+            tri_offset[:data_third,2] = offset[:data_third]
+            tri_offset[:data_third,1] = offset[:data_third]
+            tri_offset[:data_third,0] = offset[:data_third]
+
+            tri_offset[data_third:data_third*2,1] = offset[data_third:data_third*2]
+            tri_offset[data_third:data_third*2,0] = offset[data_third:data_third*2]
+
+            tri_offset[data_third*2:,0] = offset[data_third*2:]
+
+
+
 
         # shuffle columns independently per row
         for i in range(d.shape[0]):
@@ -114,6 +135,47 @@ class ConverterDataset(CostumDataset):
             d[:, t, n_w+3] = v_beta
 
 
+        # Create a figure with a 2x2 grid of subplots
+        """       fig, ax = plt.subplots(9, 1, figsize=(13, 9))
+
+        ax[0].plot(va_full[0])
+        ax[0].plot(vb_full[0])
+        ax[0].plot(vc_full[0])
+
+        ax[1].plot(va_full[3])
+        ax[1].plot(vb_full[3])
+        ax[1].plot(vc_full[3])
+
+        ax[2].plot(va_full[15])
+        ax[2].plot(vb_full[15])
+        ax[2].plot(vc_full[15])
+
+        ax[3].plot(va_full[33])
+        ax[3].plot(vb_full[33])
+        ax[3].plot(vc_full[33])
+
+        ax[4].plot(va_full[38])
+        ax[4].plot(vb_full[38])
+        ax[4].plot(vc_full[38])
+
+        ax[5].plot(va_full[25])
+        ax[5].plot(vb_full[25])
+        ax[5].plot(vc_full[25])
+
+        ax[6].plot(va_full[44])
+        ax[6].plot(vb_full[44])
+        ax[6].plot(vc_full[44])
+
+        ax[7].plot(va_full[55])
+        ax[7].plot(vb_full[55])
+        ax[7].plot(vc_full[55])
+
+        ax[8].plot(va_full[59])
+        ax[8].plot(vb_full[59])
+        ax[8].plot(vc_full[59])"""
+
+
+        plt.show()
         #d = d[torch.randperm(d.size(0))]
 
         return d

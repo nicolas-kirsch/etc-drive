@@ -130,6 +130,7 @@ lg = Lg/Z_base
 z = Z/Z_base
 l = l/Z_base"""
 
+print("Hereherehere")
 m = M
 d = D
 c = C
@@ -152,7 +153,7 @@ logger.info(msg)
 
 # ------------ 1. Dataset ------------
 dataset = ConverterDataset(
-    random_seed=args.random_seed, horizon=args.horizon, h=h
+    random_seed=args.random_seed, horizon=args.horizon, h=h, n_phases_lost=args.phase_loss
 )
 
 
