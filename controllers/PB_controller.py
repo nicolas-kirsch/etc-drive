@@ -8,7 +8,6 @@ from .MLP import MLP, RNNModel
 from assistive_functions import to_tensor
 import torch.nn.functional as F
 from collections import OrderedDict
-from controllers.m_operators.ssm import DeepSSM, SSMConfig
 
 
 class PerfBoostController(nn.Module):
@@ -88,6 +87,8 @@ class PerfBoostController(nn.Module):
         self.last_dq[:,:,1] = 0
         self.v_norm_nom = 3150
 
+        self.threshold = 9e-3
+
         self.MLP = MLP(dim_out = self.dim_out)
         """self.RNN = RNNModel(input_dim=9, hidden_dim=10, output_dim=self.dim_out)
         #self.c_ren = REN(self.dim_in,self.dim_out,dim_internal,dim_nl,gamma=300)
@@ -153,9 +154,11 @@ class PerfBoostController(nn.Module):
         v_dq[:,:,1] = -vg[:,:,0]*np.sin(theta) + vg[:,:,1]*np.cos(theta)
 
         v_norm = torch.sqrt(vg[:,:,0:1]**2 + vg[:,:,1:2]**2)
+        v_norm = torch.norm(vg[:,:,0:2], p=2, dim=-1)
+        v_norm = v_norm.unsqueeze(-1)    # shape: (N, M, 1)
 
         v_norm_dist = v_norm - self.v_norm_nom
-        v_norm_dist = torch.where(torch.norm(v_norm_dist)>1e-3, v_norm, torch.zeros_like(v_norm_dist))/self.Vbase
+        v_norm_dist = torch.where(torch.norm(v_norm_dist)>self.threshold, v_norm, torch.zeros_like(v_norm_dist))/self.Vbase
         v_norm_dist = v_norm_dist
 
 
@@ -163,7 +166,9 @@ class PerfBoostController(nn.Module):
         """if torch.norm(v_dq-self.last_dq) > 1e-3:
             is_disturbance += 1
             self.last_dq = v_dq"""
-        if torch.norm(v_norm-self.v_norm_nom) > 1e-3:
+        if torch.norm(v_norm-self.v_norm_nom) > self.threshold:
+            print(self.t)
+
             is_disturbance += 1
             self.last_dq = v_dq
 

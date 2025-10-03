@@ -158,7 +158,7 @@ dataset = ConverterDataset(
 
 
 # divide to train and test
-train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, num_test_samples=3)
+train_data, test_data = dataset.get_data(num_train_samples=args.num_rollouts, num_test_samples=30)
 train_data, test_data = train_data.to(device), test_data.to(device)
 train_data = train_data[:,:args.train_horizon,:]
 test_data = test_data[:,:args.horizon,:]

@@ -71,6 +71,7 @@ class ConverterDataset(CostumDataset):
         if self.n_phases_lost == 1:
             tri_offset[:,0] = offset
         elif self.n_phases_lost == 2:
+            print("Quaqua")
             tri_offset[:,2] = offset
             tri_offset[:,1] = offset
         elif self.n_phases_lost == 3:
@@ -78,6 +79,7 @@ class ConverterDataset(CostumDataset):
             tri_offset[:,1] = offset
             tri_offset[:,0] = offset
         else: 
+            print("Here here ")
             tri_offset[:data_third,2] = offset[:data_third]
             tri_offset[:data_third,1] = offset[:data_third]
             tri_offset[:data_third,0] = offset[:data_third]
