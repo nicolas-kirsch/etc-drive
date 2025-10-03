@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-import cvxpy as cp
+
 
 
 class Converter(torch.nn.Module):
