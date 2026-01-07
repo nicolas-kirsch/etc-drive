@@ -11,7 +11,7 @@ class MLP(nn.Module):
         super().__init__()
 
         self.mlp = nn.Sequential(
-            nn.Linear(9, 6),
+            nn.Linear(16, 6),
             nn.ReLU(),
             nn.Linear(6, 10),
             nn.ReLU(),

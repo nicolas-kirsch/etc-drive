@@ -144,7 +144,7 @@ lg = Lg
 z = Z
 l = l
 
-imax = 2222.2
+imax = 2222
 
 base_values = None
 
@@ -208,11 +208,10 @@ ctl = PerfBoostController(
     output_amplification=20,contraction_rate_lb=1
 ).to(device)
 
-"""load_folder = os.path.join(save_path, 'perf_boost_10_29_18_29_47')
-params = torch.load(os.path.join(load_folder, 'best_controller_params_epoch_4500.pth'),weights_only=False)
+load_folder = os.path.join(save_path, 'perf_boost_10_28_17_19_28')
+params = torch.load(os.path.join(load_folder, 'best_controller_params_epoch_4000.pth'),weights_only=False)
 ctl.set_parameters_as_vector(params["REN"])
 ctl.set_MLP_parameters(params["MLP"])
-"""
 
 
 # ------------ 4. Loss ------------
@@ -246,105 +245,6 @@ loss_base = loss_fn.forward(x_log_base, us)
 msg = 'Base controller loss: %.2f' % (loss_base[0][0].item())
 logger.info(msg)
 
-
-
-# ------------ 5. Optimizer ------------
-optimizer = torch.optim.Adam(ctl.parameters(), lr=args.lr)
-valid_data = train_data      # use the entire train data for validation
-
-"""optimizer.load_state_dict(params['optimizer_state_dict'])
-
-torch.set_rng_state(params['rng_states']['torch'])
-torch.cuda.set_rng_state_all(params['rng_states']['cuda'])
-np.random.set_state(params['rng_states']['numpy'])
-"""
-
-loss_log = []
-
-
-# ------------ 6. Training ------------
-logger.info('\n------------ Begin training ------------')
-best_valid_loss = 1e20
-
-for epoch in range(1+args.epochs):
-    # iterate over all data batches
-    for train_data_batch in train_dataloader:
-        optimizer.zero_grad()
-
-        # simulate over horizon steps
-        x_log, u_log, _ ,_= sys.rollout(controller=ctl, data=train_data_batch)
-
-        # loss of this rollout
-        loss = loss_fn.forward(x_log[:,:,:], u_log[:,:,:])
-        loss.backward()
-        optimizer.step()
-
-
-
-    loss_log.append(loss.cpu().detach().item())
-
-    # print info
-    if epoch%args.log_epoch == 0:
-        print('---------------')
-        msg = 'Epoch: %i --- TRAIN LOSS : %.2f'% (epoch, loss)
-        #msg +='--- Loss xh : %.2f ---  loss ul: %.2f---  loss uh: %.2f'% (loss_xh, loss_ul, loss_uh)
-        if args.return_best:
-            # rollout the current controller on the valid data
-            with torch.no_grad():
-                x_log_valid, u_log_valid, _ ,_= sys.rollout(
-                    controller=ctl, data=valid_data
-                )
-                if epoch == 0: 
-                    x_log_test = x_log_valid.cpu()
-                    u_log_test = u_log_valid.cpu()
-
-
-                # loss of the valid data
-                loss_valid = loss_fn.forward(x_log_valid, u_log_valid)
-
-            msg += ' ---||---  TESTING LOSS: %.2f ---||--- Vref Loss: %.2f ---||--- Vmin loss %.2f ---||--- Imax loss %.2f'  % (
-                loss_valid, loss_fn.loss_vref, loss_fn.loss_vmin, loss_fn.loss_imax) 
-            
-            """msg += ', gamma: %.2f ' % (
-                ctl.c_ren.sg**2)"""
-            # compare with the best valid loss
-            if loss_valid.item()<best_valid_loss:
-                x_log_valid_best = x_log_valid          ##
-                u_log_valid_best = u_log_valid
-                best_valid_loss = loss_valid.item()
-                best_params = ctl.get_parameters_as_vector()  # record state dict if best on valid
-                best_params_MLP = ctl.get_MLP_parameters()
-
-                #save_params = {"REN":best_params, "MLP": best_params_MLP}
-
-                save_params = {
-                    'epoch': epoch,
-                    "REN":best_params, "MLP": best_params_MLP,
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'rng_states': {
-                        'torch': torch.get_rng_state(),
-                        'cuda': torch.cuda.get_rng_state_all(),
-                        'numpy': np.random.get_state(),
-                    },
-                }
-
-                # Save the best parameters
-                torch.save(save_params, os.path.join(save_folder, 'best_controller_params_epoch_'+str(epoch)+'.pth'))
-                
-                msg += ' (*** best so far ***)'
-        logger.info(msg)
-
-
-# set to best seen during training
-if args.return_best:
-    ctl.set_parameters_as_vector(best_params)
-    ctl.set_MLP_parameters(best_params_MLP)
-
-    save_params = {"REN":best_params, "MLP": best_params_MLP}
-
-    # Save the best parameters
-    torch.save(save_params, os.path.join(save_folder, 'best_controller_params.pth'))
-    params = torch.load(os.path.join(save_folder, 'best_controller_params.pth'),weights_only=False)
 
 with torch.no_grad():
     x_log_test, u_log_test, pb,_ = sys.rollout(
@@ -386,6 +286,22 @@ u_log_test = u_log_test.cpu().detach()
 d_mech = d_mech.cpu().detach().numpy()
 print(x_log_base[0,-1,:])
 print(torch.isnan(x_log_base[0,-1,1]).any().item())
+
+
+# --- Plot ---
+plt.figure(figsize=(12, 4))
+plt.plot(np.array(range(vdc_log_base.shape[0]))*h, vdc_log_base, color="#FF7F0E", label="Base controller only")
+plt.plot(np.array(range(vdc_log_base.shape[0]))*h, vdc_log_test, label="Base controller with rPB")
+plt.axhline(y=5000, linestyle="--", color="teal", label=r"$v_{dc}^{ref}$")
+plt.axhline(y=4870, linestyle="--", color="red", label=r"Acceptable range")
+plt.axhline(y=5130, linestyle="--", color="red")
+plt.title("Vdc profile over the horizon")
+plt.xlabel("Time (s)",fontsize='large')
+plt.ylabel("Voltage (V)", fontsize='large')
+plt.legend(fontsize='large')
+plt.grid(True)
+plt.show()
+
 
 # Create a figure with a 2x2 grid of subplots
 fig, axs = plt.subplots(4, 2, figsize=(13, 9))

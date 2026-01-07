@@ -28,7 +28,7 @@ class ConverterDataset(CostumDataset):
         V_base = 5000
         P_base = 8e+6
         w_base = 125.66
-
+        Tmax = 46691
         I_base = P_base/V_base
 
         tau_base = P_base/w_base
@@ -54,7 +54,7 @@ class ConverterDataset(CostumDataset):
         data_x0 = torch.tensor([1.0000e+0*w_base,1.0000e+00*V_base,0,  0])
         #data_x0 = torch.tensor([0,0,0,  0])
         d[:, 0, :n_w] = data_x0
-        d[:,1:,n_w] = -2e+4
+        d[:,1:,n_w] = -0.95*Tmax
 
         ###Add the vg data###
         vg = 3150  # vg in pu
@@ -62,14 +62,16 @@ class ConverterDataset(CostumDataset):
         
 
         print(int(np.floor(num_samples/2)))
-        offset = 0.2 + torch.rand(d.shape[0])*0.6
-        #offset[:20] = 0.2
+        offset = torch.rand(d.shape[0])
+        offset[:] = 0
+        # Shuffle the offset tensor
+        offset = offset[torch.randperm(offset.size(0))]
 
         data_third = int(np.floor(d.shape[0]/3))
         tri_offset = torch.ones((d.shape[0],3))
 
         if self.n_phases_lost == 1:
-            tri_offset[:,0] = offset
+            tri_offset[:,2] = offset
         elif self.n_phases_lost == 2:
             print("Quaqua")
             tri_offset[:,2] = offset
@@ -93,12 +95,23 @@ class ConverterDataset(CostumDataset):
 
 
         # shuffle columns independently per row
-        for i in range(d.shape[0]):
-            tri_offset[i,:] = tri_offset[i, torch.randperm(3)]
+        """for i in range(d.shape[0]):
+            tri_offset[i,:] = tri_offset[i, torch.randperm(3)]"""
         va_full = torch.zeros((d.shape[0],d.shape[1],1))
         vb_full = torch.zeros((d.shape[0],d.shape[1],1))
         vc_full = torch.zeros((d.shape[0],d.shape[1],1))
 
+        t_start = 300
+        one_phase_in_timesteps = 80
+        length_fault = 1860
+
+        # Randomize fault start times per sample
+        fault_starts = torch.full((d.shape[0],), t_start)
+        delta_t_end = torch.randint(0, one_phase_in_timesteps, (d.shape[0],))
+        #delta_t_end[:] = 10  # First 20 samples have fixed fault duration
+        fault_ends = fault_starts + length_fault + delta_t_end
+        #fault_ends[:20] = t_start + length_fault  # First 20 samples have fixed fault end time
+        
         for t in range(d.shape[1]):
             theta = w * t * h
             
@@ -112,8 +125,8 @@ class ConverterDataset(CostumDataset):
             cos_b = torch.full((d.shape[0],), cos_b)
             cos_c = torch.full((d.shape[0],), cos_c)
 
-            # random offset per batch
-            if 600 < t < 1000:
+            """# random offset per batch
+            if 300 < t < 800:
 
                 #offset[0:10] = 0
                 #offset[-1] = 0.5
@@ -123,7 +136,17 @@ class ConverterDataset(CostumDataset):
             else:
                 va = vg * cos_a
                 vb = vg * cos_b
-                vc = vg * cos_c
+                vc = vg * cos_c"""
+
+
+            # Determine which samples are currently in fault
+            in_fault = (t >= fault_starts) & (t < fault_ends)
+
+            # Compute va, vb, vc with or without fault
+            va = torch.where(in_fault, tri_offset[:,0] * vg * cos_a, vg * cos_a)
+            vb = torch.where(in_fault, tri_offset[:,1] * vg * cos_b, vg * cos_b)
+            vc = torch.where(in_fault, tri_offset[:,2] * vg * cos_c, vg * cos_c)
+
 
             # Clarke transform (batch-wise)
             v_alpha = (2/3) * (va - 0.5*vb - 0.5*vc)
@@ -136,46 +159,44 @@ class ConverterDataset(CostumDataset):
             d[:, t, n_w+2] = v_alpha
             d[:, t, n_w+3] = v_beta
 
+        # Choose a few random samples to visualize
+        print(d[0,2279:2281,n_w+3])
+        
+        """plt.figure(figsize=(12, 8))
+        plt.plot(d[0,2240:2320,n_w+2], label='v_alpha')
+        plt.plot(d[0,2240:2320,n_w+3], label='v_beta')
+        plt.title(f"Sample 0 — First 80 timesteps of Clarke Transform Voltages")
+        plt.ylabel("Voltage [V]")
+        plt.legend()
+        plt.xlabel("Time [s]")
+        plt.tight_layout()
+        plt.show()
+        """
 
+        """n_plot = 5
+        sample_ids = torch.randint(0, d.shape[0], (n_plot,))
+
+        t = torch.arange(d.shape[1]) * h
+
+        plt.figure(figsize=(12, 8))
+
+        for i, idx in enumerate(sample_ids):
+            plt.subplot(n_plot, 1, i+1)
+            plt.plot(range(200,400), va_full[idx,200:400,0], label='va')
+            plt.plot(range(200,400), vb_full[idx,200:400,0], label='vb')
+            plt.plot(range(200,400), vc_full[idx,200:400,0], label='vc')
+            plt.title(f"Sample {idx.item()} — Randomized Fault Start")
+            plt.ylabel("Voltage [V]")
+            if i == 0:
+                plt.legend()
+            if i < n_plot - 1:
+                plt.xticks([])
+
+        plt.xlabel("Time [s]")
+        plt.tight_layout()
+        plt.show()"""
         # Create a figure with a 2x2 grid of subplots
-        """       fig, ax = plt.subplots(9, 1, figsize=(13, 9))
-
-        ax[0].plot(va_full[0])
-        ax[0].plot(vb_full[0])
-        ax[0].plot(vc_full[0])
-
-        ax[1].plot(va_full[3])
-        ax[1].plot(vb_full[3])
-        ax[1].plot(vc_full[3])
-
-        ax[2].plot(va_full[15])
-        ax[2].plot(vb_full[15])
-        ax[2].plot(vc_full[15])
-
-        ax[3].plot(va_full[33])
-        ax[3].plot(vb_full[33])
-        ax[3].plot(vc_full[33])
-
-        ax[4].plot(va_full[38])
-        ax[4].plot(vb_full[38])
-        ax[4].plot(vc_full[38])
-
-        ax[5].plot(va_full[25])
-        ax[5].plot(vb_full[25])
-        ax[5].plot(vc_full[25])
-
-        ax[6].plot(va_full[44])
-        ax[6].plot(vb_full[44])
-        ax[6].plot(vc_full[44])
-
-        ax[7].plot(va_full[55])
-        ax[7].plot(vb_full[55])
-        ax[7].plot(vc_full[55])
-
-        ax[8].plot(va_full[59])
-        ax[8].plot(vb_full[59])
-        ax[8].plot(vc_full[59])"""
-
+        
 
         plt.show()
         #d = d[torch.randperm(d.size(0))]

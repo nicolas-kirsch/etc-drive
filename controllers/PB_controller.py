@@ -52,15 +52,16 @@ class PerfBoostController(nn.Module):
         self.output_init = output_init.reshape(1, -1,2)
         self.d_init = d_init
         self.vg_init = torch.zeros_like(self.d_init)
+        self.v_beta_init = torch.zeros((batch_size,1,1)).to(device)
         print("PB")
-        print(self.input_init.shape)
+        print(self.v_beta_init.shape)
         print(self.output_init.shape)   
 
         # set dimensions (keep only x and not v for dim_in)
         self.dim_in = self.input_init.shape[-1]
         self.dim_out = self.output_init.shape[-1]
         self.dim_out = 2
-        dim_in_ren = self.dim_in+3+1 # +1 for vdc_ref
+        dim_in_ren = self.dim_in+3+1+2 # +1 for vdc_ref
         self.Vbase = 5000
         self.wbase = 126.66
         self.ibase = 2222.2
@@ -82,10 +83,14 @@ class PerfBoostController(nn.Module):
         ).to(device)
 
         self.h = 2.5e-4
+        self.period_step = int(1/(50*self.h))
+        
         self.last_dq = torch.zeros((2,1,2)).to(device)
         self.last_dq[:,:,0] = 3150
         self.last_dq[:,:,1] = 0
         self.v_norm_nom = 3150
+
+        self.last_disturbance_t_init = torch.full((self.batch_size,1,1),-1000)
 
         self.threshold = 9e-3
 
@@ -112,8 +117,11 @@ class PerfBoostController(nn.Module):
         self.last_output = self.output_init.detach().clone()
         self.last_d = self.d_init.detach().clone()
         self.last_vg = self.vg_init.detach().clone()
-        self.c_ren.x = self.c_ren.init_x    # reset the REN state to the initial value
-
+        self.c_ren.x = self.c_ren.init_x 
+        self.last_disturbance_t = self.last_disturbance_t_init   # reset the REN state to the initial value
+        self.v_beta_prev = self.v_beta_init.detach().clone()
+        self.v_alpha_prev = torch.full((self.batch_size,1,1),3150).to(device)
+        self.sign_change_happened = torch.zeros((self.batch_size,1,1),device=device).bool()
         #self.emme.reset()
 
     def forward(self, input_t: torch.Tensor,d: torch.Tensor,vg:torch.Tensor,init = False, no_PB = False):
@@ -149,11 +157,6 @@ class PerfBoostController(nn.Module):
         # reconstruct the noise
         theta = 2*np.pi*50*self.t*self.h
 
-        v_dq = torch.zeros_like(vg)
-        v_dq[:,:,0] = vg[:,:,0]*np.cos(theta) + vg[:,:,1]*np.sin(theta)
-        v_dq[:,:,1] = -vg[:,:,0]*np.sin(theta) + vg[:,:,1]*np.cos(theta)
-
-        v_norm = torch.sqrt(vg[:,:,0:1]**2 + vg[:,:,1:2]**2)
         v_norm = torch.norm(vg[:,:,0:2], p=2, dim=-1)
         v_norm = v_norm.unsqueeze(-1)    # shape: (N, M, 1)
 
@@ -161,33 +164,64 @@ class PerfBoostController(nn.Module):
         v_norm_dist = torch.where(torch.norm(v_norm_dist)>self.threshold, v_norm, torch.zeros_like(v_norm_dist))/self.Vbase
         v_norm_dist = v_norm_dist
 
+        vg_pu = vg / self.Vbase
 
+        v_beta = vg[:,:,1:2]
+        v_alpha = vg[:,:,0:1]
         is_disturbance = torch.zeros((vg.shape[0],1,1),device=device)
+        is_ldisturbance = torch.zeros((vg.shape[0],1,1),device=device)
+
         """if torch.norm(v_dq-self.last_dq) > 1e-3:
             is_disturbance += 1
             self.last_dq = v_dq"""
-        if torch.norm(v_norm-self.v_norm_nom) > self.threshold:
-            print(self.t)
-
-            is_disturbance += 1
-            self.last_dq = v_dq
-
         
 
+
+                # Check for new disturbance
+        in_disturbance = (torch.norm(v_norm - self.v_norm_nom) > self.threshold)
+  
+        self.last_disturbance_t = torch.where(in_disturbance,torch.full_like(self.last_disturbance_t,int(self.t)),self.last_disturbance_t)
+        self.sign_change_happened = torch.where(in_disturbance,torch.zeros_like(self.sign_change_happened).bool(),self.sign_change_happened)
+        
+        
+        # Stay in disturbance mode if last disturbance within past 50 steps
+
+        mask_within_period = (self.t - self.last_disturbance_t <= self.period_step)
+        current_step = torch.full_like(self.last_disturbance_t,int(self.t))
+        #sign_change = (current_step%40-1==0) 
+        #sign_change = (self.v_beta_prev * v_beta <= 0) & () & (~self.sign_change_happened)
+        sign_change =(self.v_beta_prev * v_beta <= 0) & (current_step>self.last_disturbance_t) & (~self.sign_change_happened)  & (mask_within_period)
+
+        self.sign_change_happened = torch.where(sign_change,torch.ones_like(self.sign_change_happened).bool(),self.sign_change_happened)
+        
+
+        
+        # logical update: still disturbance if within period and no zero-crossing yet
+        still_active = mask_within_period & (~self.sign_change_happened)
+        #still_active = mask_within_period
+        """if still_active.any():
+            print("Sign change detected at time step:", self.t)"""
+           
+
+            
+        is_disturbance = torch.where(still_active,torch.ones_like(is_disturbance),is_disturbance)
+
+        """if self.t - self.last_disturbance_t <= 20:
+            is_disturbance += 1"""
         w_ = w_/ self.base_w.view(1, 1, -1)
 
         pu_vals = input_t[:,:,0:3] / self.base.view(1, 1, -1)
         dist_presence = torch.zeros_like(input_t[:,:,0:3])  # shape = (self.batch_size, 1, 1)
         
         dist_presence = torch.clone(pu_vals)*is_disturbance
-        
+        vg_pu = vg_pu*is_disturbance
         #Get the current error
         error_vdc = (input_t[:,:,0:1] - self.vdc_ref)  # shape = (self.batch_size, 1, 1)
         
-        ren_input = torch.cat((w_,dist_presence,v_norm_dist), dim=2)
+        ren_input = torch.cat((w_,dist_presence,v_norm_dist,vg_pu), dim=2)
 
 
-        mlp_input = torch.cat((w_[:,:,0:4],d,input_t[:,:,0:1]), dim=2)
+        mlp_input = torch.cat((w_[:,:,0:4],d,input_t), dim=2)
         mlp_input = mlp_input.view(input_t.shape[0],1, -1)
    
         # apply REN on disturbance
@@ -210,8 +244,12 @@ class PerfBoostController(nn.Module):
         #output = output.reshape(self.batch_size,1,-1)
         # update internal states
         output = output_REN*output_MLP  # shape = (self.batch_size, 1, self.dim_out)
+
+        #time.sleep(1)
         #output = torch.clamp(output, min=-2, max=2)  # Clamp output between -2 and 2
         self.last_input, self.last_output,self.last_d = input_t, output,d
+        self.v_beta_prev = v_beta
+        self.v_alpha_prev = v_alpha
         self.t += 1
 
         #print(output)
@@ -240,9 +278,11 @@ class PerfBoostController(nn.Module):
 
     def set_parameter(self, name, value):
         current_val = getattr(self.c_ren, name)
-        value = torch.nn.Parameter(to_tensor(value.reshape(current_val.shape)))
-        setattr(self.c_ren, name, value)
-        self.c_ren._update_model_param()    # update dependent params
+        with torch.no_grad():
+            current_val.copy_(to_tensor(value.reshape(current_val.shape)))
+        # Do NOT rewrap with nn.Parameter
+        # Do NOT reassign via setattr
+        self.c_ren._update_model_param()  # if this recomputes dependent stuff
 
     def set_parameters(self, param_dict):
         for name, value in param_dict.items():

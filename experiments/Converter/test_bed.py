@@ -134,7 +134,7 @@ loss_fn = ConverterLoss(
 
 
 offset = 0.2 + torch.rand(test_data.shape[0])*0.6
-#offset = torch.full_like(offset,0.2)
+offset = torch.full_like(offset,0.2)
 data_third = int(np.floor(test_data.shape[0]/3))
 data_sev = int(np.floor(test_data.shape[0]/7))
 vg = 3150 
@@ -230,8 +230,12 @@ for t in range(test_data.shape[1]):
     test_data[data_sev*6:,t,4+2] = v_alpha_abc[data_sev*6:]
     test_data[data_sev*6:,t,4+3] = v_beta_abc[data_sev*6:]
 
-
-
+plt.plot(np.array(range(test_data.shape[1]))*h,test_data[data_sev*5+1,:,4+2:4+4], label = ["v_alpha","v_beta"])
+plt.title("Grid voltage in alpha-beta coordinates with phase C reduced to 20% of nominal", size=14)
+plt.xlabel("Time [s]")
+plt.ylabel("Voltage [V]")
+plt.legend()
+plt.show()
 sys  = Converter(x0,wref,vref,qref,h,m,d,c,g,lg,z,l,base_values,Ared,Bred,Cred,Ered)
 
 print(sys.u_init.shape)
@@ -362,8 +366,336 @@ print(f"\n TEST loss ABC: {test_loss_abc:.2f}")  ##
 print(f"\n BASE loss ABC: {base_loss_abc:.2f}")  ##
 
 
+# --- Compute FFT along time dimension ---
+
+# --- compute mean (DC) and detrend ---
+mean_val = vdc_log_base_c[1000:3000,:].mean()
+x_detrended = vdc_log_base_c[1000:3000,:].reshape(1,2000,1) - mean_val
+
+X = torch.fft.rfft(x_detrended, dim=1)       # only positive frequencies (real-valued input)
+amplitude = torch.abs(X) / 2000 * 2   # normalize amplitude (factor 2 for single-sided)
+freqs = torch.fft.rfftfreq(2000, d=h)
+
+mean_val = vdc_log_test_c[1000:3000,:].mean()
+x_detrended = vdc_log_test_c[1000:3000,:].reshape(1,2000,1) - mean_val
+
+X_pb = torch.fft.rfft(x_detrended, dim=1)       # only positive frequencies (real-valued input)
+amplitude_pb = torch.abs(X_pb) / 2000 * 2   # normalize amplitude (factor 2 for single-sided)
+freqs_pb = torch.fft.rfftfreq(2000, d=h)
+
+
+
+ig_log_test_c = x_log_test_c[1,:,1:3]
+mean_val = ig_log_test_c[1000:3000,0].mean()
+x_detrended = ig_log_test_c[1000:3000,0].reshape(1,2000,1) - mean_val
+
+X_ig_test_a = torch.fft.rfft(x_detrended, dim=1)       # only positive frequencies (real-valued input)
+amplitude_ig_test_a = torch.abs(X_ig_test_a) / 2000 * 2   # normalize amplitude (factor 2 for single-sided)
+freq_ig_test_a = torch.fft.rfftfreq(2000, d=h)
+
+mean_val = ig_log_test_c[1000:3000,1].mean()
+x_detrended = ig_log_test_c[1000:3000,1].reshape(1,2000,1) - mean_val
+
+X_ig_test_b = torch.fft.rfft(x_detrended, dim=1)       # only positive frequencies (real-valued input)
+amplitude_ig_test_b = torch.abs(X_ig_test_b) / 2000 * 2   # normalize amplitude (factor 2 for single-sided)
+freq_ig_test_b = torch.fft.rfftfreq(2000, d=h)
+
+
+ig_log_base_ab = x_log_base_c[1,:,1:3]
+mean_val = ig_log_base_ab[1000:3000,0].mean()
+x_detrended = ig_log_base_ab[1000:3000,0].reshape(1,2000,1) - mean_val
+
+X_ig_base_a = torch.fft.rfft(x_detrended, dim=1)       # only positive frequencies (real-valued input)
+amplitude_ig_base_a = torch.abs(X_ig_base_a) / 2000 * 2   # normalize amplitude (factor 2 for single-sided)
+freq_ig_base_a = torch.fft.rfftfreq(2000, d=h)
+
+mean_val = ig_log_base_ab[1000:3000,1].mean()
+x_detrended = ig_log_base_ab[1000:3000,1].reshape(1,2000,1) - mean_val
+
+X_ig_base_b = torch.fft.rfft(x_detrended, dim=1)       # only positive frequencies (real-valued input)
+amplitude_ig_base_b = torch.abs(X_ig_base_b) / 2000 * 2   # normalize amplitude (factor 2 for single-sided)
+freq_ig_base_b = torch.fft.rfftfreq(2000, d=h)
+
+
+
+amp_no_dc = amplitude.clone()
+#amp_no_dc[:,0,:] = 0.0
+print(amp_no_dc[:,:100,:])
+
+# --- get indices of top 5 amplitudes ---
+topk = torch.topk(amp_no_dc, k=5,dim=1)
+print(topk)
+# --- print results ---
+print("Top 5 frequency peaks base:")
+for idx, val in zip(topk.indices[0], topk.values[0]):
+
+    print(f"{freqs[idx].item():8.3f} Hz   amplitude = {val.item():.3f}")
+
+amp_no_dc = amplitude_pb.clone()
+#amp_no_dc[:,0,:] = 0.0
+topk = torch.topk(amp_no_dc, k=5,dim=1)
+
+# Get top 5 peaks by amplitude
+# --- print results ---
+print("Top 5 frequency peaks rPB:")
+for idx, val in zip(topk.indices[0], topk.values[0]):
+    print(f"{freqs[idx].item():8.3f} Hz   amplitude = {val.item():.3f}")
+
+amp_no_dc = amplitude_ig_base_b.clone()
+#amp_no_dc[:,0,:] = 0.0
+topk = torch.topk(amp_no_dc, k=5,dim=1)
+
+# Get top 5 peaks by amplitude
+# --- print results ---
+print("Top 5 frequency peaks base beta:")
+for idx, val in zip(topk.indices[0], topk.values[0]):
+    print(f"{freq_ig_base_b[idx].item():8.3f} Hz   amplitude = {val.item():.3f}")
+
+amp_no_dc = amplitude_ig_base_a.clone()
+#amp_no_dc[:,0,:] = 0.0
+topk = torch.topk(amp_no_dc, k=5,dim=1)
+
+# Get top 5 peaks by amplitude
+# --- print results ---
+print("Top 5 frequency peaks base alpha:")
+for idx, val in zip(topk.indices[0], topk.values[0]):
+    print(f"{freq_ig_base_a[idx].item():8.3f} Hz   amplitude = {val.item():.3f}")
+
+amp_no_dc = amplitude_ig_test_b.clone()
+#amp_no_dc[:,0,:] = 0.0
+topk = torch.topk(amp_no_dc, k=5,dim=1)
+
+# Get top 5 peaks by amplitude
+# --- print results ---
+print("Top 5 frequency peaks rPB beta:")
+for idx, val in zip(topk.indices[0], topk.values[0]):
+    print(f"{freq_ig_test_b[idx].item():8.3f} Hz   amplitude = {val.item():.3f}")
+
+amp_no_dc = amplitude_ig_test_a.clone()
+#amp_no_dc[:,0,:] = 0.0
+topk = torch.topk(amp_no_dc, k=5,dim=1)
+
+# Get top 5 peaks by amplitude
+# --- print results ---
+print("Top 5 frequency peaks rPB alpha:")
+for idx, val in zip(topk.indices[0], topk.values[0]):
+    print(f"{freq_ig_test_a[idx].item():8.3f} Hz   amplitude = {val.item():.3f}")
+
+# --- Plot ---
+plt.figure(figsize=(8, 4))
+plt.plot(freq_ig_test_b, amplitude_ig_test_b.squeeze(),label="Base and rPB")
+plt.plot(freq_ig_base_b, amplitude_ig_base_b.squeeze(),label="Only base", linestyle='--')
+plt.title("Spectral analysis of the beta coordinate of the grid current with and without rPB")
+plt.xlabel("Frequency [Hz]")
+plt.ylabel("Amplitude")
+plt.xlim(0, 1000)
+plt.legend()
+plt.grid(True)
+
+plt.figure(figsize=(8, 4))
+plt.plot(freq_ig_test_a, amplitude_ig_test_a.squeeze(),label="Base and rPB")
+plt.plot(freq_ig_base_a, amplitude_ig_base_a.squeeze(),label="Only base", linestyle='--')
+plt.title("Spectral analysis of the alpha coordinate of the grid current with and without rPB")
+plt.xlabel("Frequency [Hz]")
+plt.ylabel("Amplitude")
+plt.xlim(0, 1000)
+plt.legend()
+plt.grid(True)
+
+plt.figure(figsize=(8, 4))
+plt.plot(freqs_pb, amplitude_pb.squeeze(),label="Base and rPB")
+plt.plot(freqs, amplitude.squeeze(),label="Only base", linestyle='--')
+plt.title("Spectral analysis of the DC bus voltage with and without rPB")
+plt.xlabel("Frequency [Hz]")
+plt.ylabel("Amplitude")
+plt.xlim(0, 1000)
+plt.legend()
+plt.grid(True)
+
+plt.show()
+
+Pmaxa = sys.P_max[data_sev*5:data_sev*6,:,:].cpu().detach()
+P_max_a = Pmaxa[1,:,0:1]
+
+Pa =d_mech[data_sev*5:data_sev*6,:,:].cpu().detach()
+P_a = Pa[1,:,0:1]
+
+tm = sys.tm[data_sev*5:data_sev*6,:,:].cpu().detach()
+tau_m = tm[1,:,0:1]
+
+x_log_base = x_log_base_c.cpu().detach()
+vdc_log_base = x_log_base[1,:,0:1]
+ig_log_base = x_log_base[1,:,1:3]
+w_log_base = x_log_base[1,:,6]
+
+
+x_log_test = x_log_test_c.cpu().detach()
+vdc_log_test = x_log_test[1,:,0:1]
+ig_log_test = x_log_test[1,:,1:3]
+w_log_test = x_log_test[1,:,6]
 
 # Create a figure with a 2x2 grid of subplots
+fig, axs = plt.subplots(4, 2, figsize=(13, 9))
+
+# Plot 1: X profile over the horizon
+#axs[0, 0].plot(np.array(range(vdc_log_base.shape[0]))*h, vdc_log_test[0],label = f"rPB")
+axs[0, 0].plot(np.array(range(vdc_log_base.shape[0]))*h, vdc_log_base,color = "#FF7F0E", label = "Base")
+axs[0, 0].plot(np.array(range(vdc_log_base.shape[0]))*h, vdc_log_test, label = "PB")
+axs[0, 0].axhline(y=5000, linestyle="--", color="red", label=r"$v_{dc}^*$")
+axs[0, 0].axhline(y=4870, linestyle="--", color="teal", label=r"Acceptable range")
+axs[0, 0].axhline(y=5130, linestyle="--", color="teal")
+axs[0, 0].set_title("Vdc profile over the horizon")
+axs[0, 0].set_xlabel("Time (s)")
+axs[0, 0].set_ylabel("Voltage (V)")
+axs[0,0].legend(loc='center right')
+axs[0, 0].grid()
+
+
+
+
+axs[0, 1].plot(np.array(range(test_data.shape[1]))*h, w_log_base,color = "#FF7F0E", label = "Base Controller")
+axs[0, 1].plot(np.array(range(test_data.shape[1]))*h, w_log_test, label = "rPB Controller")
+
+#axs[0, 1].plot(np.array(range(test_data.shape[1]))*h, w_log_abs,color = "#2CA02C", label = "Abs Controller", linestyle = "--")
+axs[0, 1].axhline(y=125.66, linestyle="--", color="red", label=r"$w*$")
+axs[0, 1].set_title("W profile over the horizon")
+axs[0, 1].set_xlabel("Time (s)")
+axs[0, 1].set_ylabel("Angular velocity (rad/s)")
+#axs[0, 1].set_ylim(120, 130)
+axs[0,1].legend()
+axs[0, 1].grid()
+
+# Plot 2: DXref profile over the horizon
+
+axs[3, 1].plot(np.array(range(test_data.shape[1]))*h, P_max_a,label = f"Pmax")
+axs[3, 1].plot(np.array(range(test_data.shape[1]))*h, P_a,label = f"P")
+axs[3, 1].set_title("Evolution of active power over the horizon ")
+axs[3, 1].set_xlabel("Time (s)")
+axs[3, 1].set_ylabel(r"$P (W)$")
+axs[3, 1].legend(loc='center right')
+axs[3, 1].grid()
+
+# Plot 3: U profile over the horizon
+axs[2, 1].plot(np.array(range(test_data.shape[1]))*h, tau_m)
+axs[2, 1].set_title(r"$\tau_{m}$ profile over the horizon")
+axs[2, 1].set_xlabel("Time (s)")
+axs[2, 1].set_ylabel("Torque (Nm)")
+axs[2, 1].grid()
+"""
+mg_norm = torch.norm(u_log_base, dim=-1, keepdim=True) 
+mg_norm_test = torch.norm(u_log_test, dim=-1, keepdim=True) 
+
+
+axs[2, 0].plot(np.array(range(mg_norm.shape[1]))*h, mg_norm[0],color = "#FF7F0E",label = r"$||M_g||$")
+axs[2, 0].plot(np.array(range(mg_norm_test.shape[1]))*h, mg_norm_test[0],label = r"$||M_g||_{PB}$")
+axs[2, 0].plot(np.array(range(test_data.shape[1]))*h,[1/np.sqrt(2)]*len(np.array(range(test_data.shape[1]))),linestyle = "--", label = r"$||M_g||_{max}$")
+axs[2, 0].set_title("Mg Norm profile over the horizon")
+axs[2, 0].set_xlabel("Time (s)")
+axs[2, 0].set_ylabel("||Mg||")
+axs[2, 0].legend(loc ='center right')
+axs[2, 0].grid()"""
+
+
+# Plot 1: X profile over the horizon
+for i in range(test_data.shape[0]): 
+    #axs[1, 0].plot(np.array(range(test_data.shape[1]))*h, ig_log_test[i])
+    axs[1, 0].plot(np.array(range(test_data.shape[1]))*h, ig_log_base)
+                   #linestyle = "--",color = "#FF7F0E", label = "Base")
+axs[1, 0].set_title("I profile over the horizon")
+axs[1, 0].set_xlabel("Time (s)")
+axs[1, 0].set_ylabel("I")
+axs[1,0].legend()
+axs[1, 0].grid()
+
+
+# Plot 1: X profile over the horizon
+for i in range(test_data.shape[0]): 
+    #axs[1, 0].plot(np.array(range(test_data.shape[1]))*h, ig_log_test[i])
+    axs[2, 0].plot(np.array(range(test_data.shape[1]))*h, ig_log_test)
+                   #linestyle = "--",color = "#FF7F0E", label = "Base")
+axs[2, 0].set_title("I profile over the horizon")
+axs[2, 0].set_xlabel("Time (s)")
+axs[2, 0].set_ylabel("I")
+axs[2,0].legend()
+axs[2, 0].grid()
+
+
+
+#axs[2, 0].plot(np.array(range(epoch+1)),loss_log)
+
+"""axs[3, 0].plot(np.array(range(test_data.shape[1]))*h, d_mech[0])
+axs[3, 0].plot(np.array(range(test_data.shape[1]))*h,[1e+5*80]*len(np.array(range(test_data.shape[1]))),linestyle = "--",)
+axs[3, 0].set_title("Evolution of P_mech over the horizon ")
+axs[3, 0].set_xlabel("Time (s)")
+axs[3, 0].set_ylabel(r"$P_{mech}$")
+axs[3, 0].grid()"""
+
+i_norm = torch.norm(ig_log_base, dim=-1, keepdim=True) 
+i_norm_test = torch.norm(ig_log_test, dim=-1, keepdim=True) 
+
+
+
+axs[1, 1].plot(np.array(range(i_norm.shape[0]))*h, i_norm,color = "#FF7F0E",label = r"$||I||$")
+axs[1, 1].plot(np.array(range(i_norm_test.shape[0]))*h, i_norm_test,label = r"$||I||_{PB}$")
+axs[1, 1].plot(np.array(range(i_norm.shape[0]))*h,[2800]*len(np.array(range(i_norm.shape[0]))),linestyle = "--",label = r"$||I||_{max}$")
+axs[1, 1].set_title("I Norm profile over the horizon")
+axs[1, 1].set_xlabel("Time (s)")
+axs[1, 1].set_ylabel("||I||")
+axs[1, 1].legend(loc='center right')
+axs[1, 1].grid()
+
+print(i_norm.shape)
+i_norm = i_norm[:3000,:]
+i_norm_test = i_norm_test[:3000,:]
+
+"""axs[3, 0].plot(np.array(range(i_norm.shape[0]))*h, i_norm,color = "#FF7F0E",label = r"$||I||$")
+axs[3, 0].plot(np.array(range(i_norm_test.shape[0]))*h, i_norm_test,label = r"$||I||_{PB}$")
+axs[3, 0].plot(np.array(range(i_norm.shape[0]))*h,[2800]*len(np.array(range(i_norm.shape[0]))),linestyle = "--",label = r"$||I||_{max}$")
+axs[3, 0].set_title("I Norm profile over the horizon - zoomed")
+axs[3, 0].set_xlabel("Time (s)")
+axs[3, 0].set_ylabel("||I||")
+axs[3, 0].legend(loc='center right')
+axs[3, 0].grid()"""
+# Plot 3: U profile over the horizon
+axs[3, 0].plot(np.array(range(test_data.shape[1]))*h, u_log_test[0,:,:])
+axs[3, 0].set_title("Mg profile over the horizon")
+axs[3, 0].set_xlabel("Time (s)")
+axs[3, 0].set_ylabel("mg")
+axs[3, 0].grid()
+
+
+"""mg_norm = mg_norm[0,:,:]
+mg_norm_test = mg_norm_test[0,:,:]"""
+
+"""axs[3, 1].plot(np.array(range(mg_norm.shape[0]))*h, mg_norm,color = "#FF7F0E",label = r"$||Mg||$")
+axs[3, 1].plot(np.array(range(mg_norm_test.shape[0]))*h, mg_norm_test,label = r"$||Mg||_{PB}$")
+axs[3, 1].plot(np.array(range(mg_norm.shape[0]))*h,[1/np.sqrt(2)]*len(np.array(range(mg_norm.shape[0]))),linestyle = "--",label = r"$||Mg||_{max}$")
+axs[3, 1].set_title("Mg Norm profile over the horizon - zoomed")
+axs[3, 1].set_xlabel("Time (s)")
+axs[3, 1].set_ylabel("||Mg||")
+axs[3, 1].legend(loc='center right')
+axs[3, 1].grid()"""
+
+"""axs[3, 1].plot(np.array(range(mg_norm.shape[0]))*h, pb[1,:,0],color = "#FF7F0E",label = r"$Mg_0$")
+axs[3, 1].plot(np.array(range(mg_norm_test.shape[0]))*h, pb[1,:,1],label = r"$Mg_1$")
+axs[3, 1].set_title("PB output")
+axs[3, 1].set_xlabel("Time (s)")
+axs[3, 1].set_ylabel("||Mg||")
+axs[3, 1].legend(loc='center right')
+axs[3, 1].grid()
+"""
+# Adjust layout to prevent overlap
+plt.tight_layout()
+plt.subplots_adjust(top=0.9)  # Adjust the top space to make room for the suptitle
+
+plt.suptitle(f'System evolution', fontsize=17)
+plt.savefig(os.path.join(save_folder, 'system_evolution.png'), dpi=300, bbox_inches='tight')
+plt.show()
+
+
+
+
+"""# Create a figure with a 2x2 grid of subplots
 fig, axs = plt.subplots(4, 2, figsize=(13, 8))
 
 # Plot 1: X profile over the horizon
@@ -451,3 +783,4 @@ plt.subplots_adjust(top=0.9)  # Adjust the top space to make room for the suptit
 
 plt.suptitle(f'Loss of phase A and B', fontsize=17)
 plt.show()
+"""

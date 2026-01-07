@@ -20,7 +20,7 @@ def argument_parser():
     parser.add_argument('--phase-loss', type=int, default=2, help='How many phases are lost in the fault. Default is 2.')
 
     # optimizer
-    parser.add_argument('--batch-size', type=int, default=15, help='Number of forward trajectories of the closed-loop system at each step. Default is 5.')
+    parser.add_argument('--batch-size', type=int, default=3, help='Number of forward trajectories of the closed-loop system at each step. Default is 5.')
     parser.add_argument('--epochs', type=int, default=10, help='Total number of epochs for training. Default is 5000 if collision avoidance, else 100.')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate. Default is 2e-3 if collision avoidance, else 5e-3.')
     parser.add_argument('--log-epoch', type=int, default=-1, help='Frequency of logging in epochs. Default is 0.1 * epochs.')
@@ -34,6 +34,7 @@ def argument_parser():
 
     # loss
     parser.add_argument('--alpha-v-max', type=float, default=0, help='Weight of the loss due to control input "u". Default is 0.1/400.')  #TODO: 400 is output_amplification^2
+    parser.add_argument('--alpha-i-max', type=float, default=0, help='Weight of the loss due to control input "u". Default is 0.1/400.')  #TODO: 400 is output_amplification^2
     parser.add_argument('--Q', type=float, default=1, help='Weight of the loss due to control input "u". Default is 0.1/400.')  #TODO: 400 is output_amplification^2
     parser.add_argument('--alpha-col', type=float, default=100, help='Weight of the collision avoidance loss. Default is 100 if "col-av" is True, else None.')
     parser.add_argument('--alpha-obst', type=float, default=5e3, help='Weight of the obstacle avoidance loss. Default is 5e3 if "obst-av" is True, else None.')

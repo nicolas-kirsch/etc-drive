@@ -64,7 +64,7 @@ class Converter(torch.nn.Module):
         self.d_mech = torch.tensor([[8e+6]])
         self.d = torch.zeros((1,1,4))  # shape = (batch_size, 1, state_dim*2)
 
-        self.igmax = 2222
+        self.igmax = 2222.2
         self.tau_max = 46691
         self.wmax = 125.66
         
@@ -509,6 +509,7 @@ class Converter(torch.nn.Module):
     def gen_mg(self,v_dc,idc,ig,ig_v,P_mech,vg: torch.Tensor, d_mg: torch.Tensor=0,in_controller=False, no_PB=False):
 
         vg_norm = torch.linalg.norm(vg, ord=2, dim=-1, keepdim=True)  # Shape: (1, 1)
+        vg_norm_safe = torch.maximum(vg_norm, torch.full_like(vg_norm, 1))  # Avoid division by zero
 
 
         P_max = 6.6/7*vg_norm*self.igmax  # Maximum power limit based on grid voltage and current limits
@@ -522,11 +523,11 @@ class Converter(torch.nn.Module):
         P_dc,idc_ = self.PI_dc(vdc_e,idc, iff, idc_max,in_controller=in_controller)  # Compute the DC power reference
 
         igs, Gamma1 = self.gen_igs_G1(vg, P_dc, self.Qs)
-
+        self.igs = igs.clone()
         ig_e = ig - igs  # Compute the error between actual and reference current
         vff = vg - F.linear(igs, self.Z)  # Feedforward voltage based on reference current
 
-        vg_angle = vg/ vg_norm
+        vg_angle = vg/ vg_norm_safe
 
         us,ig_v = self.PI_g(ig_e,ig_v, vff, vg_angle)  # Compute the control input based on current error and feedforward voltage
         if no_PB:
@@ -581,13 +582,13 @@ class Converter(torch.nn.Module):
         vg_norm = torch.linalg.norm(vg, ord=2, dim=-1, keepdim=True)  # Shape: (1, 1)
 
         P_max = 6.6/7*vg_norm*self.igmax  # Maximum power limit based on grid voltage and current limits
-
+        self.Pmax = P_max.clone()   
         #Mechanical dynamics
         P_mech, w_, w_v_ = self.compute_P_mech(x[:,:,6:8],tau_l, P_max, in_controller)  # Compute mechanical disturbance and dynamics
         self.d_mech = P_mech.clone()
         P_mech_sat = torch.clamp(P_mech, min=-P_max, max=P_max)
         iff = P_mech_sat / v_dc
- 
+        self.iff = iff.clone()
         mg,ig_v_,idc_ = self.gen_mg(v_dc,idc, ig,ig_v, P_mech, vg, d_mg, in_controller=in_controller, no_PB=no_PB) 
 
         #mg = vg/self.vdc_nom
@@ -619,13 +620,16 @@ class Converter(torch.nn.Module):
         Qext = torch.full_like(self.Qs, self.Qref)  # Reference reactive power
         #self.update_qs(Qext, Gamma1, Gamma2, Qmm)
         """
+
+        self.mgig = (self.h/self.C*torch.bmm(mg,ig.transpose(1, 2))).clone()
+
         v_dc_ = (1-self.h*self.G/self.C)*v_dc - self.h/self.C*iff+ self.h/self.C*torch.bmm(mg,ig.transpose(1, 2))
 
         ig_ = F.linear(ig,self.eye-self.h*self.Lg_inv@self.Z) - self.h*F.linear(
             mg*v_dc,self.Lg_inv) + self.h*F.linear(vg,self.Lg_inv)
 
         #ig_ = ig_ = F.linear(ig,torch.eye(2)-self.h*self.Lg_inv@self.Z) + self.h*F.linear(vg,self.Lg_inv)
-
+        self.iff = (- self.h/self.C*iff).clone()
 
         self.u_cont = mg
 
@@ -724,19 +728,24 @@ class Converter(torch.nn.Module):
                                           -1.9188e-04*3150, -1.9305e-08*2222,1.6000e-09*2222]))"""
         xs = torch.cat((x[:,0:1,1:4],v[:,0:1,1:4],x[:,0:1,0:1],v[:,0:1,0:1]),2)
         
-        init = torch.tensor([ 4.9999536133e+03,  8.2062780762e+02, -6.4584533691e+01,
-         5.1859454346e+02,  1.6475370154e-02, -4.1930428147e-01,
-         1.2552771759e+02, -1.5503498316e+00]).to(device)
+        init = torch.tensor([ 4.9999545898e+03,  1.7959554443e+03, -1.4134530640e+02,
+         1.1349514160e+03,  3.6052986979e-02, -9.1764920950e-01,
+         1.2566484619e+02, -4.3395047188e+00]).to(device)
         
         xs[:,0,:] = init
-        self.lpf_iff = 517.1087646484
-        self.lpf_idc = -0.0468370356
+        self.lpf_iff = 1129.7187500000
+        self.lpf_idc = -0.0438209772
 
-        self.lpf_iff_c = 517.108764648
-        self.lpf_vdcerr_c = -0.0468370356
+        self.lpf_iff_c = 1129.7187500000
+        self.lpf_vdcerr_c = -0.0438209772
         
         d_mech = torch.zeros(xs.shape[0],1,1).to(device)
+        self.P_max = torch.zeros(xs.shape[0],1,1).to(device)
+        self.P_max[:,0,0] = 6.6/7*3150*self.igmax
         
+        self.tm = torch.zeros(xs.shape[0],1,1).to(device)
+
+
         self.Q_ref_e = torch.zeros(xs.shape[0],1,1).to(device)
 
         vg = self.vg.repeat(xs.shape[0],1,1).to(device)
@@ -744,8 +753,9 @@ class Converter(torch.nn.Module):
         #u_PB = torch.zeros(xs.shape[0],1,2)  # Set u_PB to zero for testing purposes
         uuu = u_PB.clone().detach()
         u_cont = torch.zeros(xs.shape[0],1,2).to(device)
-
-
+        self.ig_ref = torch.zeros(xs.shape[0],1,2).to(device)
+        self.iff_traj = torch.zeros(xs.shape[0],1,1).to(device)
+        self.mgo = torch.zeros(xs.shape[0],1,1).to(device)
         for t in range(1, data.shape[1]):
             """
                         if t < 4:
@@ -759,12 +769,6 @@ class Converter(torch.nn.Module):
                 self.vg = self.original_vg.clone()
         
             """
-            if t == 16000:
-                print(xs[0,t-1,:])
-
-                print(self.lpf_iff)
-                print(self.lpf_vdcerr)
-
 
             xs = torch.cat(
                 (
@@ -801,6 +805,31 @@ class Converter(torch.nn.Module):
                 1
             )
 
+            self.ig_ref = torch.cat(
+                (self.ig_ref,self.igs),
+                1
+            )
+
+            self.iff_traj = torch.cat(
+                (self.iff_traj,self.iff),
+                1
+            )
+
+            self.mgo = torch.cat(
+                (self.mgo,self.mgig),
+                1
+            )
+
+            self.P_max = torch.cat(
+                (self.P_max,self.Pmax),
+                1
+            )
+            
+            self.tm = torch.cat(
+                (self.tm,self.tau_m),
+                1
+            )
+
              
 
             
@@ -812,3 +841,148 @@ class Converter(torch.nn.Module):
         return xs, u_cont,u_PB,d_mech
         
  
+"""x_min = torch.Tensor([70]).to(device)
+x0 = torch.Tensor([[5000],[1000],[1000],[1000],[1000],[1000]]).to(device)
+xref = torch.Tensor([[80]]).to(device)
+
+Wref = 125.66
+Vref = 5000
+Qref = 0 
+h = 2.5e-4
+
+yref = torch.Tensor([Vref,Qref]).to(device)
+
+M = 4364.5
+D = 1e-4
+C = 0.0040
+G = 1e-5
+l1 = 3.5e-04
+l2 = 5.4154e-04
+l = l1+l2
+l = 3.5897e-3
+r = 0.08
+r = 4.4797e-2
+w = 2 * np.pi * 50
+
+Lg = np.array([[l, 0], [0, l]])
+Z = np.array([[r, 0], [0, r]])
+
+# Load the .mat file
+data = scipy.io.loadmat('gains_small.mat')
+
+# Remove MATLAB metadata (optional cleanup)
+data = {k: v for k, v in data.items() if not k.startswith('__')}
+
+# Convert each to PyTorch tensor
+tensors = {k: torch.tensor(v, dtype=torch.float32) for k, v in data.items()}
+torch.set_printoptions(precision=10)
+
+# Access individual tensors
+Ared = tensors['A_1rb']
+Bred = tensors['B_1rb'].T.unsqueeze(0)
+Cred = tensors['C_2rb'].T.unsqueeze(0)
+Ered = tensors['E_1rb'].T.unsqueeze(0)
+print(Cred)
+m = M
+d = D
+c = C
+g = G
+
+wref = Wref
+vref = Vref
+qref = Qref
+
+lg = Lg
+z = Z
+l = l
+
+imax = 2222
+
+base_values = None
+
+
+
+conv = Converter(x0,wref,vref,qref,h,m,d,c,g,lg,z,l,base_values,Ared,Bred,Cred,Ered)
+
+a = torch.zeros(1,1,2)
+b = torch.zeros(1,1,2)
+c = torch.zeros(1,1,2)
+
+idc = torch.zeros(1,1,1)
+ig_v = torch.zeros(1,1,2)
+
+vdc = torch.zeros(1,1,1)
+vdc[:,:,0] = 5000
+
+ig = torch.zeros(1,1,2)
+
+P_mech = torch.zeros(1,1,1)
+P_mech[:,:,0] = 1e+6
+
+vg = torch.zeros(1,1,2)
+vg[:,:,0] = 3150
+
+wref = torch.zeros(1,1,1)
+wref[:,:,0] = 125.66
+
+a[:,:,0] = 3000
+b[:,:,0] = 1e+6
+c[:,:,0] = 1
+
+a[:,:,1] = 0
+b[:,:,1] = 0
+c[:,:,1] = -8
+u = torch.zeros(1,1,1)
+v = torch.zeros(1,1,2)
+conv.Qs = torch.zeros(1,1,1)
+x = torch.zeros(1,1,2)
+w_v = torch.zeros(1,1,1)
+w = torch.zeros(1,1,1)
+tau_l = torch.zeros(1,1,1)
+tau_m = torch.zeros(1,1,1)
+P_max = torch.zeros(1,1,1)
+w_aug = torch.zeros(1,1,2)
+w_aug[:,:,1:] = 125.66/Cred[0,0,0]
+print(w_aug[:,:,1:])
+w[:,:,0] = 125
+P_max[:,:,0] = 4e+6
+
+tau_l[:,:,0] = -2e+4
+
+tau_m[:,:,0] = 2e+4
+
+x[:,:,0] = 125
+
+for i in range(90000):
+    #vdc[:,:,0] = 5000 + i*conv.h
+    vg[:,:,0] = np.cos(2*np.pi*5*i*conv.h)*10000
+    vg[:,:,1] = np.sin(2*np.pi*5*i*conv.h)*10000
+
+
+    
+    #us, ig_v = conv.PI_g(c,ig_v,a,vg_angle)
+    #print(ig_v)
+    #us,ig_v,idc = conv.gen_mg(vdc,idc,ig,ig_v,P_mech,vg, no_PB=True)
+
+    #w_aug,w = conv.mech_dynamics(w_aug,tau_m,tau_l)  # Update the augmented state with the mechanical input
+    #u = torch.cat((u,w),dim = 1)
+    
+
+    P_mech,w_,w_v = conv.compute_P_mech(x,tau_l,P_max)
+    x = torch.cat((w_, w_v), dim=2)
+    u = torch.cat((u,w_),dim = 1)
+
+
+
+plt.figure()
+plt.plot(np.array(range(u.shape[1]-1))*h,u[0,1:,0].detach().numpy(), label = r"$w$")
+plt.xlabel("Time (s)")
+plt.ylabel(r"$w$")
+plt.ylim(124.6, 126.8)
+plt.grid(True, which='both', axis='both', linestyle='--', linewidth=0.5)
+plt.xticks(np.arange(0, u.shape[1]*h, 2))
+plt.yticks(np.arange(124.6, 126.8, 0.2))
+plt.legend()
+plt.show()
+
+"""

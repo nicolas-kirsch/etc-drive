@@ -15,14 +15,16 @@ from assistive_functions import to_tensor
 
 
 class ConverterLoss():
-    def __init__(self, R,Q_Q,Q_vdc,x_min, yref,imax,alpha_v_max=None ):
+    def __init__(self, R,Q_Q,Q_vdc,x_min, yref,imax,alpha_v_max=None,alpha_i_max=None ):
 
         self.vmat =(torch.tensor([3000,0])@torch.tensor([[0,-1],[1,0]])).float().to(device)
-
-        self.imax = imax
+        self.Ibase = 2222.2
+        self.Vbase = 5000
+        self.imax = imax/self.Ibase
         self.alpha_v_max = alpha_v_max
-        self.vmin = 4870
-        self.vmax = 5130
+        self.alpha_i_max = alpha_i_max
+        self.vmin = (0.98*5000)/self.Vbase
+        self.vmax = (1.02*5000)/self.Vbase
         
         self.xmin = to_tensor(x_min).to(device)
         self.yref = yref
@@ -51,7 +53,7 @@ class ConverterLoss():
         Q_batch = F.linear(xs[:,:,1:3],self.vmat).reshape((xs.shape[0],xs.shape[1],1,1))
 
         # Extract the last two elements along the state_dim axis
-        i_g = xs[:,:, 1:3]  # Shape: (S, T, 2)
+        i_g = xs[:,:, 1:3]/self.Ibase  # Shape: (S, T, 2)
 
         # Compute the 2-norm along the last dimension (state_dim)
         i_norm = torch.norm(i_g, dim=-1, keepdim=True)  # Shape: (S, T, 1)
@@ -69,8 +71,8 @@ class ConverterLoss():
                 e_Q
             )   # shape = (S, T, 1, 1)
         
-        e_vdc = x_batch[:,:,0:1,:]-self.yref[0]
-        v_dc = x_batch[:,:,0:1,:]
+        e_vdc = (x_batch[:,:,0:1,:]-self.yref[0])/self.Vbase
+        v_dc = x_batch[:,:,0:1,:]/self.Vbase
         evTQev = self.Q_vdc * torch.matmul(
             e_vdc.transpose(-1, -2),
             e_vdc
@@ -90,9 +92,17 @@ class ConverterLoss():
             loss_vmin = self.alpha_v_max * self.f_lower_bound_v(v_dc) # shape = (S, 1, 1)
 
 
-        loss_val =  loss_ev  + loss_vmax + loss_vmin 
-        loss_val = torch.sum(loss_val, 0)/xs.shape[0] 
+        if self.alpha_i_max is None:
+            loss_imax = 0
+        else:
+            loss_imax = self.alpha_i_max * self.f_upper_bound_i(i_norm_batch) # shape = (S, 1, 1)
 
+        loss_val =  loss_ev  + loss_vmax + loss_vmin + loss_imax
+        loss_val = torch.sum(loss_val, 0)/xs.shape[0] 
+        self.loss_vref = loss_ev.mean().item()
+        self.loss_vmax = loss_vmax.mean().item()
+        self.loss_vmin = loss_vmin.mean().item()
+        self.loss_imax = loss_imax.mean().item()
         return loss_val   
 
         
