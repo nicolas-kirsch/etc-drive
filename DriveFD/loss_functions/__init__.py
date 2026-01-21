@@ -1,0 +1,2 @@
+from loss_functions.converter_loss import ConverterLoss
+from loss_functions.mech_loss import MechanicalLoss

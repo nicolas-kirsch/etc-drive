@@ -1,0 +1,7 @@
+cvxpy
+jax
+matplotlib
+numpy
+path.py
+scipy
+setuptools
